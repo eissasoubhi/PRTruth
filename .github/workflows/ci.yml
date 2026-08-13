@@ -7,6 +7,9 @@ on:
 
 permissions:
   contents: read
+  issues: read
+  pull-requests: read
+  checks: read
 
 jobs:
   test:
@@ -20,3 +23,11 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: Dogfood PRTruth on PR #1
+        if: github.event_name == 'pull_request'
+        run: |
+          set +e
+          node dist/cli.js verify --repo eissasoubhi/PRTruth --issue 1 --pr 1 --format markdown | tee prtruth-dogfood.md
+          code=${PIPESTATUS[0]}
+          echo "PRTruth exit code: $code"
+          exit 0
