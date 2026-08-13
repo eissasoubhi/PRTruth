@@ -76,12 +76,13 @@ export class GitHubClient {
     ];
   }
 
-  async getInstructionFiles(repository: string): Promise<string[]> {
+  async getInstructionFiles(repository: string, ref?: string): Promise<string[]> {
     const existing = await Promise.all(
       instructionCandidates.map(async (path) => {
         const encoded = path.split('/').map(encodeURIComponent).join('/');
+        const suffix = ref ? `?ref=${encodeURIComponent(ref)}` : '';
         try {
-          await this.#request(`/repos/${repository}/contents/${encoded}`);
+          await this.#request(`/repos/${repository}/contents/${encoded}${suffix}`);
           return path;
         } catch {
           return null;
