@@ -44,6 +44,24 @@ describe('assessRequirement', () => {
     );
     expect(assessment.state).toBe('failed');
   });
+
+  it('proves repository artifact requirements from concrete files in the diff', () => {
+    const files: ChangedFile[] = [
+      { filename: 'LICENSE', status: 'added', additions: 21, deletions: 0 },
+      { filename: 'CONTRIBUTING.md', status: 'added', additions: 35, deletions: 0 },
+    ];
+    const assessment = assessRequirement(
+      {
+        id: 'R3',
+        text: 'The repository includes MIT licensing and contributor documentation',
+        source: 'issue-section',
+      },
+      files,
+      [],
+    );
+    expect(assessment.state).toBe('proven');
+    expect(assessment.evidence.map((item) => item.label)).toEqual(['LICENSE', 'CONTRIBUTING.md']);
+  });
 });
 
 describe('overallVerdict', () => {
