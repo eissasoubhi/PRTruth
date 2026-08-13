@@ -36,13 +36,15 @@ program
       const repository = options.repo ?? inferRepository();
       const github = new GitHubClient();
 
-      const [issue, pullRequest, files, instructionFiles] = await Promise.all([
+      const [issue, pullRequest, files] = await Promise.all([
         github.getIssue(repository, options.issue),
         github.getPullRequest(repository, options.pr),
         github.getPullFiles(repository, options.pr),
-        github.getInstructionFiles(repository),
       ]);
-      const checks = await github.getChecks(repository, pullRequest.head.sha);
+      const [checks, instructionFiles] = await Promise.all([
+        github.getChecks(repository, pullRequest.head.sha),
+        github.getInstructionFiles(repository, pullRequest.head.sha),
+      ]);
 
       const requirements = extractRequirements(issue.body, issue.title);
       const assessments = requirements.map((requirement) => assessRequirement(requirement, files, checks));
