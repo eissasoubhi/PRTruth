@@ -1,0 +1,46 @@
+{
+  "name": "prtruth",
+  "version": "0.0.0",
+  "description": "Verify whether a GitHub pull request actually proves the issue requirements it claims to solve.",
+  "type": "module",
+  "bin": {
+    "prtruth": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "github",
+    "pull-request",
+    "ai-agents",
+    "verification",
+    "evidence",
+    "ci",
+    "codex",
+    "claude-code"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eissasoubhi/PRTruth.git"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^14.0.0",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}
