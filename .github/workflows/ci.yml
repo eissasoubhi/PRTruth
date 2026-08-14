@@ -18,6 +18,9 @@ jobs:
     name: typecheck / test / build
     runs-on: self-hosted
     timeout-minutes: 15
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
 
     steps:
       - name: Checkout
@@ -35,7 +38,10 @@ jobs:
           node-version: 22.12.0
 
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: |
+          rm -rf node_modules
+          pnpm install --no-frozen-lockfile --prod=false --force
+          node -e "require.resolve('@types/node/package.json')"
 
       - name: Typecheck
         run: pnpm typecheck
