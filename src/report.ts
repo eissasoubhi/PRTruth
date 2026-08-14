@@ -1,10 +1,19 @@
-import type { VerificationReport } from "./types.js";
+import type { Evidence, VerificationReport } from "./types.js";
 
 const SYMBOL = {
   PROVEN: "✓",
   FAILED: "✗",
   UNPROVEN: "⚠"
 } as const;
+
+function evidenceLabel(evidence: Evidence): string {
+  return evidence.url ? `${evidence.summary} (${evidence.url})` : evidence.summary;
+}
+
+function markdownEvidence(evidence: Evidence): string {
+  const summary = evidence.summary.replace(/\|/g, "\\|");
+  return evidence.url ? `[${summary}](${evidence.url})` : summary;
+}
 
 export function renderTerminal(report: VerificationReport): string {
   const rows = report.results.map((result) => {
@@ -14,6 +23,9 @@ export function renderTerminal(report: VerificationReport): string {
     return `${label.padEnd(55)} ${SYMBOL[result.status]} ${result.status}`;
   });
 
+  const evidence = report.results.flatMap((result) =>
+    result.evidence.map((item) => `  ${SYMBOL[result.status]} ${result.requirement.id}: ${evidenceLabel(item)}`)
+  );
   const proven = report.results.filter((result) => result.status === "PROVEN").length;
 
   return [
@@ -23,6 +35,7 @@ export function renderTerminal(report: VerificationReport): string {
     "Requirement                                             Result",
     "────────────────────────────────────────────────────────────────────",
     ...(rows.length > 0 ? rows : ["No acceptance criteria detected.                       ⚠ UNPROVEN"]),
+    ...(evidence.length > 0 ? ["", "Evidence", "────────────────────────────────────────────────────────────────────", ...evidence] : []),
     "",
     `Verdict: ${report.verdict}`,
     `${proven} / ${report.results.length} requirements proven`
@@ -32,17 +45,24 @@ export function renderTerminal(report: VerificationReport): string {
 export function renderMarkdown(report: VerificationReport): string {
   const body = report.results.length > 0
     ? report.results
-        .map((result) => `| ${result.requirement.text.replace(/\|/g, "\\|")} | ${SYMBOL[result.status]} **${result.status}** | ${result.reason.replace(/\|/g, "\\|")} |`)
+        .map((result) => {
+          const requirement = result.requirement.text.replace(/\|/g, "\\|");
+          const reason = result.reason.replace(/\|/g, "\\|");
+          const evidence = result.evidence.length > 0
+            ? result.evidence.map(markdownEvidence).join("<br>")
+            : "—";
+          return `| ${requirement} | ${SYMBOL[result.status]} **${result.status}** | ${reason} | ${evidence} |`;
+        })
         .join("\n")
-    : "| No acceptance criteria detected | ⚠ **UNPROVEN** | Add explicit acceptance criteria to the issue. |";
+    : "| No acceptance criteria detected | ⚠ **UNPROVEN** | Add explicit acceptance criteria to the issue. | — |";
 
   return [
     `## PRTruth — ${report.verdict}`,
     "",
     `Issue #${report.issueNumber}: **${report.issueTitle}**`,
     "",
-    "| Requirement | Result | Evidence assessment |",
-    "|---|---|---|",
+    "| Requirement | Result | Evidence assessment | Concrete evidence |",
+    "|---|---|---|---|",
     body,
     "",
     `Changed files: ${report.changedFiles.length} · Checks observed: ${report.checks.length}`
