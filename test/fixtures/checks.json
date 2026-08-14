@@ -1,0 +1,10 @@
+{
+  "check_runs": [
+    {
+      "name": "test",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/acme/shop/actions/runs/1"
+    }
+  ]
+}
