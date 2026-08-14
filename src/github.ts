@@ -30,10 +30,17 @@ interface GitHubCheckRunsResponse {
   check_runs: GitHubCheckRunResponse[];
 }
 
+export interface GitHubContentResponse {
+  name: string;
+  path: string;
+  type: "file" | "dir" | string;
+  html_url?: string;
+}
+
 export class GitHubClient {
   constructor(private readonly token = process.env.GITHUB_TOKEN) {}
 
-  private async request<T>(path: string): Promise<T> {
+  private headers(): Record<string, string> {
     const headers: Record<string, string> = {
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
@@ -44,7 +51,23 @@ export class GitHubClient {
       headers.Authorization = `Bearer ${this.token}`;
     }
 
-    const response = await fetch(`https://api.github.com${path}`, { headers });
+    return headers;
+  }
+
+  private async request<T>(path: string): Promise<T> {
+    const response = await fetch(`https://api.github.com${path}`, { headers: this.headers() });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`GitHub API ${response.status}: ${body}`);
+    }
+
+    return response.json() as Promise<T>;
+  }
+
+  private async requestOptional<T>(path: string): Promise<T | null> {
+    const response = await fetch(`https://api.github.com${path}`, { headers: this.headers() });
+    if (response.status === 404) return null;
 
     if (!response.ok) {
       const body = await response.text();
@@ -72,6 +95,10 @@ export class GitHubClient {
     );
 
     return response.check_runs;
+  }
+
+  async getContent(repository: string, path: string): Promise<GitHubContentResponse | null> {
+    return this.requestOptional(`/repos/${repository}/contents/${path}`);
   }
 }
 
