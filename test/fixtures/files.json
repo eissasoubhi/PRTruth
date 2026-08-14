@@ -1,0 +1,7 @@
+[
+  {
+    "filename": "src/export/csv.ts",
+    "status": "added",
+    "patch": "+export function exportCsv() {}"
+  }
+]
