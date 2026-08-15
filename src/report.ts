@@ -15,6 +15,16 @@ function markdownEvidence(evidence: Evidence): string {
   return evidence.url ? `[${summary}](${evidence.url})` : summary;
 }
 
+function claimFactCheck(status: "PROVEN" | "FAILED" | "UNPROVEN"): string {
+  if (status === "UNPROVEN") {
+    return `${SYMBOL[status]} **${status}** — unsupported`;
+  }
+  if (status === "FAILED") {
+    return `${SYMBOL[status]} **${status}** — contradicted`;
+  }
+  return `${SYMBOL[status]} **${status}**`;
+}
+
 export function renderTerminal(report: VerificationReport): string {
   const rows = report.results.map((result) => {
     const label = result.requirement.text.length > 52
@@ -56,6 +66,11 @@ export function renderMarkdown(report: VerificationReport): string {
         .join("\n")
     : "| No acceptance criteria detected | ⚠ **UNPROVEN** | Add explicit acceptance criteria to the issue. | — |";
 
+  const claimBody = report.claimResults?.map((result) => {
+    const claim = result.claim.text.replace(/\|/g, "\\|");
+    return `| ${claim} | ${claimFactCheck(result.status)} |`;
+  }).join("\n");
+
   return [
     `## PRTruth — ${report.verdict}`,
     "",
@@ -64,6 +79,16 @@ export function renderMarkdown(report: VerificationReport): string {
     "| Requirement | Result | Evidence assessment | Concrete evidence |",
     "|---|---|---|---|",
     body,
+    ...(claimBody
+      ? [
+          "",
+          "### Completion claims",
+          "",
+          "| Claim | Fact check |",
+          "|---|---|",
+          claimBody
+        ]
+      : []),
     "",
     `Changed files: ${report.changedFiles.length} · Checks observed: ${report.checks.length}`
   ].join("\n");
