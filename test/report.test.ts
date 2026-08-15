@@ -71,12 +71,28 @@ describe("evidence reports", () => {
     expect(markdown).toContain("### Completion claims");
     expect(markdown).toContain("No breaking changes");
     expect(markdown).toContain("⚠ **UNPROVEN** — unsupported");
-    expect(markdown).not.toContain("No deterministic compatibility evidence was observed.");
+  });
+
+  it("explains completion claim verdicts with concrete evidence in Markdown", () => {
+    const markdown = renderMarkdown(report);
+    expect(markdown).toContain("| Claim | Fact check | Why | Concrete evidence |");
+    expect(markdown).toContain("Matching CI checks completed successfully.");
+    expect(markdown).toContain("No deterministic compatibility evidence was observed.");
+    expect(markdown).toContain("[test: success](https://example.test/check/1)");
   });
 
   it("includes concrete evidence in terminal output", () => {
     const terminal = renderTerminal(report);
     expect(terminal).toContain("Evidence");
     expect(terminal).toContain("REQ-1: test: success (https://example.test/check/1)");
+  });
+
+  it("explains completion claim verdicts in terminal output", () => {
+    const terminal = renderTerminal(report);
+    expect(terminal).toContain("Completion claims");
+    expect(terminal).toContain("Claim explanations");
+    expect(terminal).toContain("claim-1: Matching CI checks completed successfully.");
+    expect(terminal).toContain("Evidence: test: success (https://example.test/check/1)");
+    expect(terminal).toContain("claim-2: No deterministic compatibility evidence was observed.");
   });
 });
