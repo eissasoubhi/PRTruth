@@ -1,4 +1,9 @@
-import type { CheckRunSummary, EvidenceStatus } from "./types.js";
+import type {
+  CheckRunSummary,
+  ClaimResult,
+  CompletionClaim,
+  EvidenceStatus
+} from "./types.js";
 
 export interface ClaimEvidenceAssessment {
   status: EvidenceStatus;
@@ -118,4 +123,23 @@ export function assessCompletionClaim(
     reason: `Matching ${category} checks did not provide a definitive success or failure result.`,
     matchedChecks
   };
+}
+
+export function buildClaimResults(
+  claims: CompletionClaim[],
+  checks: CheckRunSummary[]
+): ClaimResult[] {
+  return claims.map((claim) => {
+    const assessment = assessCompletionClaim(claim.text, checks);
+    return {
+      claim,
+      status: assessment.status,
+      reason: assessment.reason,
+      evidence: assessment.matchedChecks.map((check) => ({
+        kind: "ci" as const,
+        summary: `${check.name}: ${check.conclusion ?? check.status}`,
+        ...(check.htmlUrl ? { url: check.htmlUrl } : {})
+      }))
+    };
+  });
 }

@@ -1,6 +1,7 @@
 import { GitHubClient } from "./github.js";
 import { discoverInstructionFiles } from "./instructions.js";
 import { extractCompletionClaims } from "./claims.js";
+import { buildClaimResults } from "./claim-evidence.js";
 import { extractRequirements } from "./requirements.js";
 import type { CheckRunSummary, Requirement, RequirementResult, VerificationReport } from "./types.js";
 
@@ -108,6 +109,7 @@ export async function verifyPullRequest(input: {
 
   const requirements = extractRequirements(issue.body ?? "");
   const claims = extractCompletionClaims(pull.body ?? "");
+  const claimResults = buildClaimResults(claims, checks);
   const changedFiles = files.map((file) => file.filename);
   const results = requirements.map((requirement) => evaluateRequirement(requirement, changedFiles, checks));
 
@@ -124,6 +126,7 @@ export async function verifyPullRequest(input: {
     prNumber: input.prNumber,
     prTitle: pull.title,
     claims,
+    claimResults,
     changedFiles,
     checks,
     instructions,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { assessCompletionClaim } from "../src/claim-evidence.js";
-import type { CheckRunSummary } from "../src/types.js";
+import { assessCompletionClaim, buildClaimResults } from "../src/claim-evidence.js";
+import type { CheckRunSummary, CompletionClaim } from "../src/types.js";
 
 function check(
   name: string,
@@ -72,5 +72,42 @@ describe("assessCompletionClaim", () => {
 
     expect(assessment.status).toBe("UNPROVEN");
     expect(assessment.reason).toContain("broader");
+  });
+});
+
+describe("buildClaimResults", () => {
+  it("turns extracted claims into report-ready assessments with evidence links", () => {
+    const claims: CompletionClaim[] = [
+      { id: "claim-1", text: "All tests pass", source: "claim-section" },
+      { id: "claim-2", text: "No breaking changes", source: "checked-checklist" }
+    ];
+    const checks: CheckRunSummary[] = [
+      {
+        name: "unit tests",
+        status: "completed",
+        conclusion: "success",
+        htmlUrl: "https://github.com/example/repo/actions/runs/1"
+      }
+    ];
+
+    const results = buildClaimResults(claims, checks);
+
+    expect(results).toHaveLength(2);
+    expect(results[0]).toMatchObject({
+      claim: claims[0],
+      status: "PROVEN",
+      evidence: [
+        {
+          kind: "ci",
+          summary: "unit tests: success",
+          url: "https://github.com/example/repo/actions/runs/1"
+        }
+      ]
+    });
+    expect(results[1]).toMatchObject({
+      claim: claims[1],
+      status: "UNPROVEN",
+      evidence: []
+    });
   });
 });
