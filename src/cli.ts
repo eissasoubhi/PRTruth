@@ -1,5 +1,7 @@
 #!/usr/bin/env node
+import { writeFile } from "node:fs/promises";
 import { Command } from "commander";
+import { renderJson } from "./json.js";
 import { detectRepository } from "./repository.js";
 import { renderMarkdown, renderTerminal } from "./report.js";
 import { verifyPullRequest } from "./verify.js";
@@ -25,7 +27,14 @@ program
   .requiredOption("--pr <number>", "GitHub pull request number", positiveInteger)
   .option("--repo <owner/repo>", "GitHub repository; auto-detected by default")
   .option("--format <format>", "terminal, markdown, or json", "terminal")
-  .action(async (options: { issue: number; pr: number; repo?: string; format: string }) => {
+  .option("--output <path>", "Write the selected report format to a file")
+  .action(async (options: {
+    issue: number;
+    pr: number;
+    repo?: string;
+    format: string;
+    output?: string;
+  }) => {
     try {
       const repository = options.repo ?? detectRepository();
       const report = await verifyPullRequest({
@@ -34,14 +43,21 @@ program
         prNumber: options.pr
       });
 
+      let rendered: string;
       if (options.format === "json") {
-        console.log(JSON.stringify(report, null, 2));
+        rendered = renderJson(report);
       } else if (options.format === "markdown") {
-        console.log(renderMarkdown(report));
+        rendered = renderMarkdown(report);
       } else if (options.format === "terminal") {
-        console.log(renderTerminal(report));
+        rendered = renderTerminal(report);
       } else {
         throw new Error(`Unknown format: ${options.format}. Use terminal, markdown, or json.`);
+      }
+
+      if (options.output) {
+        await writeFile(options.output, `${rendered}\n`, "utf8");
+      } else {
+        console.log(rendered);
       }
 
       if (report.verdict !== "PROVEN") {
