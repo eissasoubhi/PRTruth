@@ -10,6 +10,34 @@ const report: VerificationReport = {
   prTitle: "feat: test widget",
   changedFiles: ["src/widget.ts"],
   checks: [],
+  claimResults: [
+    {
+      claim: {
+        id: "CLAIM-1",
+        text: "All tests pass",
+        source: "checked-checklist"
+      },
+      status: "PROVEN",
+      reason: "All observed test checks completed successfully.",
+      evidence: [
+        {
+          kind: "ci",
+          summary: "test: success",
+          url: "https://example.test/check/1"
+        }
+      ]
+    },
+    {
+      claim: {
+        id: "CLAIM-2",
+        text: "No breaking changes",
+        source: "claim-section"
+      },
+      status: "UNPROVEN",
+      reason: "A no-breaking-changes claim requires API or schema compatibility evidence, not only CI status.",
+      evidence: []
+    }
+  ],
   results: [
     {
       requirement: {
@@ -42,5 +70,22 @@ describe("evidence reports", () => {
     const terminal = renderTerminal(report);
     expect(terminal).toContain("Evidence");
     expect(terminal).toContain("REQ-1: test: success (https://example.test/check/1)");
+  });
+
+  it("flags unsupported completion claims in Markdown with an explanation", () => {
+    const markdown = renderMarkdown(report);
+    expect(markdown).toContain("### Completion claims");
+    expect(markdown).toContain("No breaking changes");
+    expect(markdown).toContain("⚠ **UNPROVEN**");
+    expect(markdown).toContain("requires API or schema compatibility evidence");
+  });
+
+  it("explains claim assessments and evidence in terminal output", () => {
+    const terminal = renderTerminal(report);
+    expect(terminal).toContain("Completion claims");
+    expect(terminal).toContain("Claim explanations");
+    expect(terminal).toContain("CLAIM-1: All observed test checks completed successfully.");
+    expect(terminal).toContain("↳ test: success (https://example.test/check/1)");
+    expect(terminal).toContain("CLAIM-2: A no-breaking-changes claim requires API or schema compatibility evidence, not only CI status.");
   });
 });
