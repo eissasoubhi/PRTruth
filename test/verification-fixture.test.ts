@@ -28,6 +28,7 @@ describe("fixture-driven verification", () => {
       if (url.endsWith("/repos/acme/shop/pulls/77")) return jsonResponse(fixture("pull"));
       if (url.includes("/repos/acme/shop/pulls/77/files")) return jsonResponse(fixture("files"));
       if (url.includes("/repos/acme/shop/commits/abc123/check-runs")) return jsonResponse(fixture("checks"));
+      if (url.includes("/repos/acme/shop/contents/")) return new Response("not found", { status: 404 });
 
       throw new Error(`Unexpected GitHub request: ${url}`);
     });
@@ -41,6 +42,7 @@ describe("fixture-driven verification", () => {
 
     expect(report.verdict).toBe("NOT_PROVEN");
     expect(report.changedFiles).toEqual(["src/export/csv.ts"]);
+    expect(report.instructions).toEqual([]);
     expect(report.results).toHaveLength(2);
     expect(report.results[0]).toMatchObject({
       status: "UNPROVEN",
