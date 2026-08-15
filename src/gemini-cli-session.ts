@@ -118,12 +118,12 @@ function isCommandEvent(event: GeminiCliSessionEvent): boolean {
   const type = event.type.toLowerCase();
   const tool = event.tool?.toLowerCase();
 
-  return (
-    type.includes("command") ||
-    type.includes("shell") ||
-    type.includes("tool") ||
-    (tool !== undefined && GEMINI_COMMAND_TOOLS.has(tool))
-  );
+  if (tool !== undefined) {
+    if (GEMINI_COMMAND_TOOLS.has(tool)) return true;
+    if (type.includes("tool")) return false;
+  }
+
+  return type.includes("command") || type.includes("shell");
 }
 
 function classifyCommandResult(event: GeminiCliSessionEvent): SessionCommandResult {
