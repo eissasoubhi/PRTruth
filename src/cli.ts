@@ -3,6 +3,7 @@ import { writeFile } from "node:fs/promises";
 import { Command } from "commander";
 import { writeGitHubStepSummary } from "./github-summary.js";
 import { renderJson } from "./json.js";
+import { parseVerificationPolicy, shouldFailVerification } from "./policy.js";
 import { detectRepository } from "./repository.js";
 import { renderMarkdown, renderTerminal } from "./report.js";
 import { verifyPullRequest } from "./verify.js";
@@ -30,6 +31,12 @@ program
   .option("--format <format>", "terminal, markdown, or json", "terminal")
   .option("--output <path>", "Write the selected report format to a file")
   .option("--github-summary", "append the Markdown report to GITHUB_STEP_SUMMARY")
+  .option(
+    "--policy <policy>",
+    "strict, failures-only, or report-only",
+    parseVerificationPolicy,
+    "strict"
+  )
   .action(async (options: {
     issue: number;
     pr: number;
@@ -37,6 +44,7 @@ program
     format: string;
     output?: string;
     githubSummary?: boolean;
+    policy: ReturnType<typeof parseVerificationPolicy>;
   }) => {
     try {
       const repository = options.repo ?? detectRepository();
@@ -70,7 +78,7 @@ program
         console.log(rendered);
       }
 
-      if (report.verdict !== "PROVEN") {
+      if (shouldFailVerification(report.verdict, options.policy)) {
         process.exitCode = 1;
       }
     } catch (error) {
