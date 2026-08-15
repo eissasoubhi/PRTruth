@@ -39,6 +39,52 @@ export interface GitHubContentResponse {
   html_url?: string;
 }
 
+export class GitHubApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly path: string,
+    readonly retryAfterSeconds?: number
+  ) {
+    super(message);
+    this.name = "GitHubApiError";
+  }
+}
+
+function errorMessage(status: number, path: string, retryAfterSeconds?: number): string {
+  if (status === 401) {
+    return "GitHub authentication failed. Check GITHUB_TOKEN and its permissions.";
+  }
+
+  if (status === 403) {
+    return retryAfterSeconds
+      ? `GitHub API rate limit or abuse protection triggered. Retry in ${retryAfterSeconds}s.`
+      : "GitHub API access was forbidden. Check token permissions or rate limits.";
+  }
+
+  if (status === 404) {
+    return `GitHub resource not found: ${path}. Check the repository, issue/PR number, and token access.`;
+  }
+
+  return `GitHub API request failed with status ${status}: ${path}`;
+}
+
+function apiError(response: Response, path: string): GitHubApiError {
+  const retryAfterHeader = response.headers.get("retry-after");
+  const parsedRetryAfter = retryAfterHeader === null ? undefined : Number.parseInt(retryAfterHeader, 10);
+  const retryAfterSeconds =
+    parsedRetryAfter !== undefined && Number.isFinite(parsedRetryAfter)
+      ? parsedRetryAfter
+      : undefined;
+
+  return new GitHubApiError(
+    errorMessage(response.status, path, retryAfterSeconds),
+    response.status,
+    path,
+    retryAfterSeconds
+  );
+}
+
 export class GitHubClient {
   constructor(private readonly token = process.env.GITHUB_TOKEN) {}
 
@@ -60,8 +106,7 @@ export class GitHubClient {
     const response = await fetch(`https://api.github.com${path}`, { headers: this.headers() });
 
     if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`GitHub API ${response.status}: ${body}`);
+      throw apiError(response, path);
     }
 
     return response.json() as Promise<T>;
@@ -72,8 +117,7 @@ export class GitHubClient {
     if (response.status === 404) return null;
 
     if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`GitHub API ${response.status}: ${body}`);
+      throw apiError(response, path);
     }
 
     return response.json() as Promise<T>;
