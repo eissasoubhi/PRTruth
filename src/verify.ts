@@ -1,4 +1,5 @@
 import { GitHubClient } from "./github.js";
+import { discoverInstructionFiles } from "./instructions.js";
 import { extractRequirements } from "./requirements.js";
 import type { CheckRunSummary, Requirement, RequirementResult, VerificationReport } from "./types.js";
 
@@ -89,10 +90,11 @@ export async function verifyPullRequest(input: {
   token?: string;
 }): Promise<VerificationReport> {
   const client = new GitHubClient(input.token);
-  const [issue, pull, files] = await Promise.all([
+  const [issue, pull, files, instructions] = await Promise.all([
     client.getIssue(input.repository, input.issueNumber),
     client.getPull(input.repository, input.prNumber),
-    client.getPullFiles(input.repository, input.prNumber)
+    client.getPullFiles(input.repository, input.prNumber),
+    discoverInstructionFiles(client, input.repository)
   ]);
 
   const checkRuns = await client.getCheckRuns(input.repository, pull.head.sha);
@@ -121,6 +123,7 @@ export async function verifyPullRequest(input: {
     prTitle: pull.title,
     changedFiles,
     checks,
+    instructions,
     results,
     verdict
   };

@@ -28,6 +28,11 @@ export interface CheckRunSummary {
   htmlUrl?: string;
 }
 
+export interface RepositoryInstruction {
+  path: string;
+  htmlUrl?: string;
+}
+
 export interface VerificationReport {
   repository: string;
   issueNumber: number;
@@ -36,6 +41,7 @@ export interface VerificationReport {
   prTitle: string;
   changedFiles: string[];
   checks: CheckRunSummary[];
+  instructions: RepositoryInstruction[];
   results: RequirementResult[];
   verdict: "PROVEN" | "FAILED" | "NOT_PROVEN";
 }
