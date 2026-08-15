@@ -27,6 +27,13 @@ export interface RequirementResult {
   evidence: Evidence[];
 }
 
+export interface ClaimResult {
+  claim: CompletionClaim;
+  status: EvidenceStatus;
+  reason: string;
+  evidence: Evidence[];
+}
+
 export interface CheckRunSummary {
   name: string;
   status: string;
@@ -46,6 +53,7 @@ export interface VerificationReport {
   prNumber: number;
   prTitle: string;
   claims?: CompletionClaim[];
+  claimResults?: ClaimResult[];
   changedFiles: string[];
   checks: CheckRunSummary[];
   instructions: RepositoryInstruction[];
