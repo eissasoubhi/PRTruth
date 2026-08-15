@@ -45,6 +45,22 @@ GITHUB_TOKEN=... npx prtruth verify --issue 148 --pr 152 --comment
 
 PRTruth marks its comment with a hidden identifier. Re-running the command updates the existing PRTruth comment instead of adding another one, including on pull requests with more than 100 comments. Comment publishing requires a GitHub token with permission to write pull-request issue comments.
 
+## README badge
+
+Generate a Markdown badge from a verification result:
+
+```bash
+npx prtruth verify --issue 148 --pr 152 --format badge
+```
+
+Example output:
+
+```markdown
+[![PRTruth: PROVEN](https://img.shields.io/badge/PRTruth-PROVEN-brightgreen)](https://github.com/owner/repository)
+```
+
+The badge reflects the same verification verdict as the normal report: `PROVEN`, `FAILED`, or `NOT PROVEN`. The `--policy` option controls process exit behavior independently from the rendered verdict.
+
 ## Principles
 
 - Evidence over confidence.
