@@ -35,6 +35,16 @@ Verdict: NOT PROVEN
 
 The first release will read the issue and PR, extract acceptance criteria and completion claims, inspect changed files and CI/check results, discover repository instruction files, and render terminal, Markdown, and JSON evidence reports.
 
+### Keep one evidence comment on the pull request
+
+Pass `--comment` to publish the Markdown verification report back to the pull request:
+
+```bash
+GITHUB_TOKEN=... npx prtruth verify --issue 148 --pr 152 --comment
+```
+
+PRTruth marks its comment with a hidden identifier. Re-running the command updates the existing PRTruth comment instead of adding another one, including on pull requests with more than 100 comments. Comment publishing requires a GitHub token with permission to write pull-request issue comments.
+
 ## Principles
 
 - Evidence over confidence.

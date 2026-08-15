@@ -4,6 +4,7 @@ import { Command } from "commander";
 import { writeGitHubStepSummary } from "./github-summary.js";
 import { renderJson } from "./json.js";
 import { parseVerificationPolicy, shouldFailVerification } from "./policy.js";
+import { upsertPullRequestComment } from "./pr-comment.js";
 import { detectRepository } from "./repository.js";
 import { renderMarkdown, renderTerminal } from "./report.js";
 import { verifyPullRequest } from "./verify.js";
@@ -31,6 +32,7 @@ program
   .option("--format <format>", "terminal, markdown, or json", "terminal")
   .option("--output <path>", "Write the selected report format to a file")
   .option("--github-summary", "append the Markdown report to GITHUB_STEP_SUMMARY")
+  .option("--comment", "create or update the PRTruth evidence comment on the pull request")
   .option(
     "--policy <policy>",
     "strict, failures-only, or report-only",
@@ -44,6 +46,7 @@ program
     format: string;
     output?: string;
     githubSummary?: boolean;
+    comment?: boolean;
     policy: ReturnType<typeof parseVerificationPolicy>;
   }) => {
     try {
@@ -53,12 +56,13 @@ program
         issueNumber: options.issue,
         prNumber: options.pr
       });
+      const markdown = renderMarkdown(report);
 
       let rendered: string;
       if (options.format === "json") {
         rendered = renderJson(report);
       } else if (options.format === "markdown") {
-        rendered = renderMarkdown(report);
+        rendered = markdown;
       } else if (options.format === "terminal") {
         rendered = renderTerminal(report);
       } else {
@@ -66,7 +70,7 @@ program
       }
 
       if (options.githubSummary) {
-        const written = await writeGitHubStepSummary(renderMarkdown(report));
+        const written = await writeGitHubStepSummary(markdown);
         if (!written) {
           throw new Error("--github-summary requires GITHUB_STEP_SUMMARY to be set.");
         }
@@ -76,6 +80,17 @@ program
         await writeFile(options.output, `${rendered}\n`, "utf8");
       } else {
         console.log(rendered);
+      }
+
+      if (options.comment) {
+        const published = await upsertPullRequestComment({
+          repository,
+          prNumber: options.pr,
+          body: markdown
+        });
+        console.error(
+          `PRTruth evidence comment ${published.action}${published.htmlUrl ? `: ${published.htmlUrl}` : ` (#${published.commentId})`}`
+        );
       }
 
       if (shouldFailVerification(report.verdict, options.policy)) {
