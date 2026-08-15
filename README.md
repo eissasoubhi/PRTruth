@@ -14,7 +14,7 @@ It reports three deliberately strict outcomes:
 
 > PRTruth does not ask “did the agent say it finished?” It asks “what can we prove from the repository?”
 
-## v0.1
+## Quick start
 
 ```bash
 npx prtruth verify --issue 148 --pr 152
@@ -33,7 +33,7 @@ Verdict: NOT PROVEN
 3 / 5 requirements verified
 ```
 
-The first release will read the issue and PR, extract acceptance criteria and completion claims, inspect changed files and CI/check results, discover repository instruction files, and render terminal, Markdown, and JSON evidence reports.
+PRTruth reads the issue and pull request, extracts acceptance criteria and completion claims, inspects changed files and CI/check results, discovers repository instruction files, and renders terminal, Markdown, and JSON evidence reports.
 
 ### Keep one evidence comment on the pull request
 
@@ -61,6 +61,16 @@ Example output:
 
 The badge reflects the same verification verdict as the normal report: `PROVEN`, `FAILED`, or `NOT PROVEN`. The `--policy` option controls process exit behavior independently from the rendered verdict.
 
+## What v0.1.0 includes
+
+- Evidence-based acceptance-criteria verification.
+- Completion-claim fact checking with concrete explanations.
+- GitHub Action and idempotent pull-request comments.
+- Terminal, Markdown, JSON, and badge output.
+- JavaScript/TypeScript, PHPUnit/PHP, pytest/Python, Go, API/schema, and security/static-analysis evidence adapters.
+- Agent-session evidence adapters for Codex, Claude Code, Cursor, Copilot, Gemini CLI, and OpenCode.
+- Signed and hash-addressed receipts, evidence plugins, and historical comparison.
+
 ## Principles
 
 - Evidence over confidence.
@@ -71,9 +81,7 @@ The badge reflects the same verification verdict as the normal report: `PROVEN`,
 
 ## Roadmap
 
-- **v0.1:** CLI evidence engine
-- **v0.2:** GitHub Action and PR evidence comment
-- **v0.3:** agent/PR claim fact-checking
+The current implementation roadmap is tracked in [`ROADMAP.md`](ROADMAP.md).
 
 ## Development
 
@@ -81,6 +89,7 @@ Node.js 22+ and TypeScript.
 
 ```bash
 pnpm install
+pnpm typecheck
 pnpm test
 pnpm build
 ```
