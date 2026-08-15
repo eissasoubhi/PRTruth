@@ -1,0 +1,6 @@
+{
+  "number": 42,
+  "title": "Add CSV export",
+  "body": "## Acceptance criteria\n\n- [ ] Export endpoint exists\n- [ ] Tests pass",
+  "html_url": "https://github.com/acme/shop/issues/42"
+}

@@ -1,0 +1,7 @@
+{
+  "number": 77,
+  "title": "feat: add CSV export",
+  "body": "Implements the export endpoint and adds tests.",
+  "html_url": "https://github.com/acme/shop/pull/77",
+  "head": { "sha": "abc123" }
+}
