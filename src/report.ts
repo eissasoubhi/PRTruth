@@ -25,17 +25,27 @@ function claimFactCheck(status: "PROVEN" | "FAILED" | "UNPROVEN"): string {
   return `${SYMBOL[status]} **${status}**`;
 }
 
+function terminalLabel(text: string): string {
+  return text.length > 52 ? `${text.slice(0, 49)}...` : text;
+}
+
 export function renderTerminal(report: VerificationReport): string {
   const rows = report.results.map((result) => {
-    const label = result.requirement.text.length > 52
-      ? `${result.requirement.text.slice(0, 49)}...`
-      : result.requirement.text;
+    const label = terminalLabel(result.requirement.text);
     return `${label.padEnd(55)} ${SYMBOL[result.status]} ${result.status}`;
   });
 
   const evidence = report.results.flatMap((result) =>
     result.evidence.map((item) => `  ${SYMBOL[result.status]} ${result.requirement.id}: ${evidenceLabel(item)}`)
   );
+  const claimRows = report.claimResults?.map((result) => {
+    const label = terminalLabel(result.claim.text);
+    return `${label.padEnd(55)} ${SYMBOL[result.status]} ${result.status}`;
+  }) ?? [];
+  const claimDetails = report.claimResults?.flatMap((result) => [
+    `  ${SYMBOL[result.status]} ${result.claim.id}: ${result.reason}`,
+    ...result.evidence.map((item) => `    Evidence: ${evidenceLabel(item)}`)
+  ]) ?? [];
   const proven = report.results.filter((result) => result.status === "PROVEN").length;
 
   return [
@@ -46,6 +56,18 @@ export function renderTerminal(report: VerificationReport): string {
     "────────────────────────────────────────────────────────────────────",
     ...(rows.length > 0 ? rows : ["No acceptance criteria detected.                       ⚠ UNPROVEN"]),
     ...(evidence.length > 0 ? ["", "Evidence", "────────────────────────────────────────────────────────────────────", ...evidence] : []),
+    ...(claimRows.length > 0
+      ? [
+          "",
+          "Completion claims",
+          "────────────────────────────────────────────────────────────────────",
+          ...claimRows,
+          "",
+          "Claim explanations",
+          "────────────────────────────────────────────────────────────────────",
+          ...claimDetails
+        ]
+      : []),
     "",
     `Verdict: ${report.verdict}`,
     `${proven} / ${report.results.length} requirements proven`
@@ -68,7 +90,11 @@ export function renderMarkdown(report: VerificationReport): string {
 
   const claimBody = report.claimResults?.map((result) => {
     const claim = result.claim.text.replace(/\|/g, "\\|");
-    return `| ${claim} | ${claimFactCheck(result.status)} |`;
+    const reason = result.reason.replace(/\|/g, "\\|");
+    const evidence = result.evidence.length > 0
+      ? result.evidence.map(markdownEvidence).join("<br>")
+      : "—";
+    return `| ${claim} | ${claimFactCheck(result.status)} | ${reason} | ${evidence} |`;
   }).join("\n");
 
   return [
@@ -84,8 +110,8 @@ export function renderMarkdown(report: VerificationReport): string {
           "",
           "### Completion claims",
           "",
-          "| Claim | Fact check |",
-          "|---|---|",
+          "| Claim | Fact check | Why | Concrete evidence |",
+          "|---|---|---|---|",
           claimBody
         ]
       : []),
