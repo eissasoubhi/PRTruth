@@ -9,6 +9,14 @@
   "files": [
     "dist"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eissasoubhi/PRTruth.git"
+  },
+  "homepage": "https://github.com/eissasoubhi/PRTruth#readme",
+  "bugs": {
+    "url": "https://github.com/eissasoubhi/PRTruth/issues"
+  },
   "engines": {
     "node": ">=22.12.0"
   },
