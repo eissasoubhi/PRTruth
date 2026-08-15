@@ -1,7 +1,7 @@
 import { GitHubClient } from "./github.js";
 import { discoverInstructionFiles } from "./instructions.js";
 import { extractCompletionClaims } from "./claims.js";
-import { assessCompletionClaim } from "./claim-evidence.js";
+import { buildClaimResults } from "./claim-evidence.js";
 import { extractRequirements } from "./requirements.js";
 import type { CheckRunSummary, Requirement, RequirementResult, VerificationReport } from "./types.js";
 
@@ -109,19 +109,7 @@ export async function verifyPullRequest(input: {
 
   const requirements = extractRequirements(issue.body ?? "");
   const claims = extractCompletionClaims(pull.body ?? "");
-  const claimResults = claims.map((claim) => {
-    const assessment = assessCompletionClaim(claim.text, checks);
-    return {
-      claim,
-      status: assessment.status,
-      reason: assessment.reason,
-      evidence: assessment.matchedChecks.map((check) => ({
-        kind: "ci" as const,
-        summary: `${check.name}: ${check.conclusion ?? check.status}`,
-        ...(check.htmlUrl ? { url: check.htmlUrl } : {})
-      }))
-    };
-  });
+  const claimResults = buildClaimResults(claims, checks);
   const changedFiles = files.map((file) => file.filename);
   const results = requirements.map((requirement) => evaluateRequirement(requirement, changedFiles, checks));
 
