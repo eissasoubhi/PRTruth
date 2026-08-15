@@ -102,11 +102,12 @@ function isCommandEvent(event: CodexSessionEvent): boolean {
   const type = event.type.toLowerCase();
   const tool = event.tool?.toLowerCase();
 
-  return (
-    type.includes("command") ||
-    type.includes("tool") ||
-    (tool !== undefined && CODEX_TOOL_NAMES.has(tool))
-  );
+  if (tool !== undefined) {
+    if (CODEX_TOOL_NAMES.has(tool)) return true;
+    if (type.includes("tool")) return false;
+  }
+
+  return type.includes("command");
 }
 
 function classifyCommandResult(event: CodexSessionEvent): SessionCommandResult {
