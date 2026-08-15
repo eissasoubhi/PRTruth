@@ -121,13 +121,12 @@ function isCommandEvent(event: OpenCodeSessionEvent): boolean {
   const type = event.type.toLowerCase();
   const tool = event.tool?.toLowerCase();
 
-  return (
-    type.includes("command") ||
-    type.includes("shell") ||
-    type.includes("terminal") ||
-    type.includes("tool") ||
-    (tool !== undefined && OPENCODE_COMMAND_TOOLS.has(tool))
-  );
+  if (tool !== undefined) {
+    if (OPENCODE_COMMAND_TOOLS.has(tool)) return true;
+    if (type.includes("tool")) return false;
+  }
+
+  return type.includes("command") || type.includes("shell") || type.includes("terminal");
 }
 
 function classifyCommandResult(event: OpenCodeSessionEvent): SessionCommandResult {
