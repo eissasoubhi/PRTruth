@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { writeFile } from "node:fs/promises";
 import { Command } from "commander";
+import { writeGitHubStepSummary } from "./github-summary.js";
 import { renderJson } from "./json.js";
 import { detectRepository } from "./repository.js";
 import { renderMarkdown, renderTerminal } from "./report.js";
@@ -28,12 +29,14 @@ program
   .option("--repo <owner/repo>", "GitHub repository; auto-detected by default")
   .option("--format <format>", "terminal, markdown, or json", "terminal")
   .option("--output <path>", "Write the selected report format to a file")
+  .option("--github-summary", "append the Markdown report to GITHUB_STEP_SUMMARY")
   .action(async (options: {
     issue: number;
     pr: number;
     repo?: string;
     format: string;
     output?: string;
+    githubSummary?: boolean;
   }) => {
     try {
       const repository = options.repo ?? detectRepository();
@@ -52,6 +55,13 @@ program
         rendered = renderTerminal(report);
       } else {
         throw new Error(`Unknown format: ${options.format}. Use terminal, markdown, or json.`);
+      }
+
+      if (options.githubSummary) {
+        const written = await writeGitHubStepSummary(renderMarkdown(report));
+        if (!written) {
+          throw new Error("--github-summary requires GITHUB_STEP_SUMMARY to be set.");
+        }
       }
 
       if (options.output) {
