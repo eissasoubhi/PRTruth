@@ -8,6 +8,34 @@ const report: VerificationReport = {
   issueTitle: "Run tests",
   prNumber: 14,
   prTitle: "feat: test widget",
+  claimResults: [
+    {
+      claim: {
+        id: "claim-1",
+        text: "All tests pass",
+        source: "claim-section"
+      },
+      status: "PROVEN",
+      reason: "Matching CI checks completed successfully.",
+      evidence: [
+        {
+          kind: "ci",
+          summary: "test: success",
+          url: "https://example.test/check/1"
+        }
+      ]
+    },
+    {
+      claim: {
+        id: "claim-2",
+        text: "No breaking changes",
+        source: "checked-checklist"
+      },
+      status: "UNPROVEN",
+      reason: "No deterministic compatibility evidence was observed.",
+      evidence: []
+    }
+  ],
   changedFiles: ["src/widget.ts"],
   checks: [],
   results: [
@@ -36,6 +64,14 @@ describe("evidence reports", () => {
     const markdown = renderMarkdown(report);
     expect(markdown).toContain("Concrete evidence");
     expect(markdown).toContain("[test: success](https://example.test/check/1)");
+  });
+
+  it("flags unsupported completion claims in Markdown", () => {
+    const markdown = renderMarkdown(report);
+    expect(markdown).toContain("### Completion claims");
+    expect(markdown).toContain("No breaking changes");
+    expect(markdown).toContain("⚠ **UNPROVEN** — unsupported");
+    expect(markdown).not.toContain("No deterministic compatibility evidence was observed.");
   });
 
   it("includes concrete evidence in terminal output", () => {
