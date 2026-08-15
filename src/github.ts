@@ -1,3 +1,5 @@
+import { collectPages } from "./pagination.js";
+
 interface GitHubIssueResponse {
   number: number;
   title: string;
@@ -86,7 +88,11 @@ export class GitHubClient {
   }
 
   async getPullFiles(repository: string, prNumber: number): Promise<GitHubPullFileResponse[]> {
-    return this.request(`/repos/${repository}/pulls/${prNumber}/files?per_page=100`);
+    return collectPages((page, perPage) =>
+      this.request<GitHubPullFileResponse[]>(
+        `/repos/${repository}/pulls/${prNumber}/files?per_page=${perPage}&page=${page}`
+      )
+    );
   }
 
   async getCheckRuns(repository: string, sha: string): Promise<GitHubCheckRunResponse[]> {
