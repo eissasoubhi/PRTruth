@@ -1,6 +1,6 @@
 {
   "name": "prtruth",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Evidence-based verification for AI-generated pull requests.",
   "type": "module",
   "bin": {
