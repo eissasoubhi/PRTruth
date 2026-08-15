@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { writeFile } from "node:fs/promises";
 import { Command } from "commander";
+import { renderVerificationBadge } from "./badge.js";
 import { writeGitHubStepSummary } from "./github-summary.js";
 import { renderJson } from "./json.js";
 import { parseVerificationPolicy, shouldFailVerification } from "./policy.js";
@@ -29,7 +30,7 @@ program
   .requiredOption("--issue <number>", "GitHub issue number", positiveInteger)
   .requiredOption("--pr <number>", "GitHub pull request number", positiveInteger)
   .option("--repo <owner/repo>", "GitHub repository; auto-detected by default")
-  .option("--format <format>", "terminal, markdown, or json", "terminal")
+  .option("--format <format>", "terminal, markdown, json, or badge", "terminal")
   .option("--output <path>", "Write the selected report format to a file")
   .option("--github-summary", "append the Markdown report to GITHUB_STEP_SUMMARY")
   .option("--comment", "create or update the PRTruth evidence comment on the pull request")
@@ -63,10 +64,14 @@ program
         rendered = renderJson(report);
       } else if (options.format === "markdown") {
         rendered = markdown;
+      } else if (options.format === "badge") {
+        rendered = renderVerificationBadge(report);
       } else if (options.format === "terminal") {
         rendered = renderTerminal(report);
       } else {
-        throw new Error(`Unknown format: ${options.format}. Use terminal, markdown, or json.`);
+        throw new Error(
+          `Unknown format: ${options.format}. Use terminal, markdown, json, or badge.`
+        );
       }
 
       if (options.githubSummary) {
