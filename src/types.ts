@@ -7,6 +7,12 @@ export interface Requirement {
   checked?: boolean;
 }
 
+export interface CompletionClaim {
+  id: string;
+  text: string;
+  source: "checked-checklist" | "claim-section";
+}
+
 export interface Evidence {
   kind: "ci" | "diff" | "issue" | "repository";
   summary: string;
@@ -39,6 +45,7 @@ export interface VerificationReport {
   issueTitle: string;
   prNumber: number;
   prTitle: string;
+  claims?: CompletionClaim[];
   changedFiles: string[];
   checks: CheckRunSummary[];
   instructions: RepositoryInstruction[];
