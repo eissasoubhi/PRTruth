@@ -27,7 +27,7 @@ The roadmap prioritizes **zero-config evidence discovery** before agent-specific
 ## v0.3 — Claim fact-checking
 
 - [x] Extract completion claims from PR descriptions
-- [ ] Match extracted claims to deterministic evidence in the final verification report
+- [x] Match extracted claims to deterministic evidence in the final verification report
 - [ ] Flag unsupported claims such as “all tests pass” or “no breaking changes” in the final verification report
 - [ ] Explain why a claim is `PROVEN`, `FAILED`, or `UNPROVEN` in user-facing output
 
