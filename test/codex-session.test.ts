@@ -55,9 +55,10 @@ describe("extractCodexSessionEvidence", () => {
     ]);
   });
 
-  it("ignores prose and events without concrete commands", () => {
+  it("ignores prose and non-command tools", () => {
     const evidence = extractCodexSessionEvidence([
       { type: "assistant_message", command: "pnpm test" },
+      { type: "tool_call", tool: "read_file", command: "README.md" },
       { type: "tool_call", tool: "shell" },
       { type: "note", command: "tests passed" }
     ]);
