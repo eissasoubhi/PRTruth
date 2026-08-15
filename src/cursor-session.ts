@@ -111,12 +111,12 @@ function isCommandEvent(event: CursorSessionEvent): boolean {
   const type = event.type.toLowerCase();
   const tool = event.tool?.toLowerCase();
 
-  return (
-    type.includes("terminal") ||
-    type.includes("command") ||
-    type.includes("tool") ||
-    (tool !== undefined && CURSOR_COMMAND_TOOLS.has(tool))
-  );
+  if (tool !== undefined) {
+    if (CURSOR_COMMAND_TOOLS.has(tool)) return true;
+    if (type.includes("tool")) return false;
+  }
+
+  return type.includes("terminal") || type.includes("command");
 }
 
 function classifyCommandResult(event: CursorSessionEvent): CursorCommandResult {
