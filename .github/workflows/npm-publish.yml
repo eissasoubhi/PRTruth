@@ -26,11 +26,17 @@ jobs:
       - name: Resolve release tag
         id: release
         shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             TAG="${{ inputs.tag }}"
           else
-            TAG="${GITHUB_EVENT_RELEASE_TAG_NAME}"
+            TAG="${RELEASE_TAG}"
+          fi
+          if [[ -z "${TAG}" ]]; then
+            echo "Unable to resolve a release tag."
+            exit 1
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
