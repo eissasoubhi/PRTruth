@@ -27,6 +27,7 @@ concurrency:
 permissions:
   contents: read
 
+# This lightweight shared sync intentionally runs outside the self-hosted CI fleet.
 jobs:
   sync:
     runs-on: ubuntu-latest
