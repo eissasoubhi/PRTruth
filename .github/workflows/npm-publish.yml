@@ -1,0 +1,103 @@
+name: Publish npm package
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing GitHub release tag to publish (for example v0.1.0)
+        required: true
+        default: v0.1.0
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: validate / build / publish npm
+    runs-on: [self-hosted, Linux, ARM64, prt]
+    timeout-minutes: 15
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Resolve release tag
+        id: release
+        shell: bash
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_EVENT_RELEASE_TAG_NAME}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js for npm
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          registry-url: https://registry.npmjs.org/
+
+      - name: Validate package version matches tag
+        shell: bash
+        run: |
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          EXPECTED_TAG="v${PACKAGE_VERSION}"
+          if [[ "${{ steps.release.outputs.tag }}" != "${EXPECTED_TAG}" ]]; then
+            echo "Release tag ${{ steps.release.outputs.tag }} does not match package version ${PACKAGE_VERSION}."
+            exit 1
+          fi
+
+      - name: Check whether npm version already exists
+        id: npm
+        shell: bash
+        run: |
+          PACKAGE_NAME="$(node -p "require('./package.json').name")"
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          if npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" version --silent >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "${PACKAGE_NAME}@${PACKAGE_VERSION} is already published; skipping."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        if: steps.npm.outputs.exists != 'true'
+        run: |
+          rm -rf node_modules
+          pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Typecheck
+        if: steps.npm.outputs.exists != 'true'
+        run: pnpm typecheck
+
+      - name: Test
+        if: steps.npm.outputs.exists != 'true'
+        run: pnpm test
+
+      - name: Build
+        if: steps.npm.outputs.exists != 'true'
+        run: pnpm build
+
+      - name: Validate npm package contents
+        if: steps.npm.outputs.exists != 'true'
+        run: npm pack --dry-run
+
+      - name: Publish to npm
+        if: steps.npm.outputs.exists != 'true'
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
