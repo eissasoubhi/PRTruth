@@ -1,6 +1,6 @@
 {
   "name": "prtruth",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Evidence-based verification for AI-generated pull requests.",
   "type": "module",
   "bin": {
@@ -36,7 +36,6 @@
   },
   "license": "MIT",
   "keywords": [
-    "ai",
     "code-review",
     "github",
     "pull-request",
