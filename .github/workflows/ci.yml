@@ -16,7 +16,7 @@ concurrency:
 jobs:
   verify:
     name: typecheck / test / build
-    runs-on: [self-hosted, Linux, ARM64, prt]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       NODE_ENV: development
