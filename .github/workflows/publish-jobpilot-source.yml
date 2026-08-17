@@ -1,6 +1,5 @@
 name: Publish JobPilot public source
 
-# Retry after sanitizing candidate fixtures in the private source snapshot.
 on:
   push:
     branches: [main]
@@ -77,6 +76,13 @@ jobs:
         run: |
           set -euo pipefail
           cd jobpilot-source
+
+          # The existing PAT can publish repository contents but GitHub correctly
+          # refuses workflow-file changes without the workflow scope. Publish the
+          # clean source first; the three reviewed workflow files are installed
+          # afterwards through the GitHub integration with Actions write access.
+          rm -rf .github/workflows
+
           rm -rf .git
           git init -b "$PUBLIC_BRANCH"
           git config user.name "github-actions[bot]"
