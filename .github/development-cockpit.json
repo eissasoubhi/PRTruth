@@ -6,7 +6,7 @@
     "eissasoubhi/mpc",
     "eissasoubhi/binnace-bot",
     "eissasoubhi/ai-saas-factory",
-    "eissasoubhi/jobpilot-local"
+    "eissasoubhi/jobpilot"
   ],
   "syncIntervalMinutes": 5
 }
