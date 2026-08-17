@@ -1,5 +1,6 @@
 name: Publish JobPilot public source
 
+# Retry after sanitizing candidate fixtures in the private source snapshot.
 on:
   push:
     branches: [main]
