@@ -26,6 +26,10 @@ jobs:
       NPM_CONFIG_PRODUCTION: "false"
 
     steps:
+      - name: Checkout source for version resolution
+        if: github.event_name == 'push'
+        uses: actions/checkout@v4
+
       - name: Resolve release tag
         id: release
         shell: bash
