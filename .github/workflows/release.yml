@@ -19,7 +19,7 @@ permissions:
 jobs:
   release:
     name: validate / build / release
-    runs-on: [self-hosted, Linux, ARM64, prt]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       NODE_ENV: development

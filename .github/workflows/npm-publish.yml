@@ -19,7 +19,7 @@ permissions:
 jobs:
   publish:
     name: validate / build / publish npm
-    runs-on: [self-hosted, Linux, ARM64, prt]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       NODE_ENV: development
