@@ -2,6 +2,27 @@
 
 All notable changes to PRTruth are documented in this file.
 
+## 0.1.6
+
+GitHub Action corrective release.
+
+### Fixed
+
+- `action.yml` is now valid for GitHub's real Action manifest parser; descriptions containing `:` are quoted correctly.
+- The composite Action no longer installs the full development dependency tree and recompiles TypeScript on every consumer pull request.
+- The Action executes the exact published `prtruth@<version>` associated with its tag from a neutral temporary directory, preventing collisions with a caller workspace that also contains a package named `prtruth`.
+- Runtime npm execution ignores authenticated user configuration and disables package lifecycle scripts, audit, and funding network extras.
+
+### Verification
+
+- Added a real GitHub Action integration smoke using `uses: ./`, so Action-manifest parsing and runtime execution are exercised by GitHub rather than checked only as text.
+- The integration smoke confirmed that public `prtruth@0.1.5` was installable and executable before this corrective release.
+
+### Documentation
+
+- Public usage examples are repository-neutral rather than tied to a project-specific repository.
+- GitHub Action examples now point to `v0.1.6`.
+
 ## 0.1.5
 
 Evidence integrity and reviewer-navigation release.
@@ -69,7 +90,7 @@ Real-project verification hardening release.
 ### Improved
 
 - `UNPROVEN` business claims can now show relevant changed files as candidate evidence without treating filename relevance as proof.
-- Real-project dogfooding runs weekly against public `ai-saas-factory` issue/PR histories and stores JSON verification reports as workflow artifacts.
+- Real-project dogfooding runs weekly against public issue/PR histories and stores JSON verification reports as workflow artifacts.
 - The dogfood workflow validates the published npm package and CLI version from a neutral temporary directory.
 
 ### Fixed
