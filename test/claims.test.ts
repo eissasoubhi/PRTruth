@@ -72,6 +72,20 @@ Typecheck failed on the self-hosted runner.
     ]);
   });
 
+  it("does not turn negated validation success language into completion claims", () => {
+    const claims = extractCompletionClaims(`
+## Validation
+- Backend tests did not pass on ARM64.
+- Typecheck does not succeed in the clean container.
+- Build never completed on the self-hosted runner.
+- Frontend tests pass.
+`);
+
+    expect(claims.map((claim) => claim.text)).toEqual([
+      "Frontend tests pass."
+    ]);
+  });
+
   it("returns no claims for prose without explicit claim structure", () => {
     expect(extractCompletionClaims("This PR probably fixes the bug.")).toEqual([]);
   });
