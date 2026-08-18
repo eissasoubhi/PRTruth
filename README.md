@@ -63,6 +63,38 @@ That is useful for:
 - creating a machine-readable verification receipt for automation and audit trails;
 - keeping a strict boundary between evidence and guesses.
 
+## Common use cases
+
+### AI pull request verification
+
+An AI coding agent says a task is complete. PRTruth checks the issue requirements, PR claims, changed files, patch candidates, and CI evidence before you trust the claim.
+
+### Acceptance criteria verification
+
+An issue contains a checklist or an `Acceptance criteria` section. PRTruth turns those requirements into explicit `PROVEN`, `FAILED`, or `UNPROVEN` results so reviewers can see what still needs evidence.
+
+### GitHub Actions merge gate
+
+Run PRTruth on every pull request in `report-only` mode first. When the reports are useful for your team, switch to `failures-only` or `strict` to make evidence part of the merge policy.
+
+### CI claim fact-checking
+
+A PR description says “tests pass”, “build is green”, or “full CI succeeds”. PRTruth checks the observed GitHub checks and workflow steps rather than trusting the text in the PR description.
+
+### Review and audit receipts
+
+Generate JSON or Markdown evidence reports for automated review workflows, release checks, or audit trails without asking a model to invent a confidence score.
+
+## PRTruth vs CI vs AI code review
+
+| Tool | Best at | What it does not prove by itself |
+| --- | --- | --- |
+| CI | Running tests, lint, typecheck, build, security checks | That every issue requirement is satisfied |
+| AI code review | Finding suspicious code, explaining changes, suggesting improvements | A deterministic proof that a completion claim is true |
+| **PRTruth** | Connecting issue requirements and PR claims to observable repository evidence | Complex runtime/business behavior without a deterministic evidence source |
+
+PRTruth is designed to **complement CI and code review**, not replace them.
+
 ## How it works
 
 PRTruth currently follows an evidence-first, deterministic pipeline:
@@ -201,6 +233,28 @@ Good deterministic evidence includes:
 - signed/hash-addressed verification receipts.
 
 Some statements need stronger evidence than a normal diff or green CI can provide. For example, “no breaking changes”, “all edge cases are covered”, or a complex business rule should remain `UNPROVEN` unless PRTruth has a deterministic adapter capable of proving them.
+
+## FAQ
+
+### Does PRTruth use AI to decide whether code is correct?
+
+No. The current core verifier is deterministic. It reads structured GitHub evidence and applies explicit rules. This is intentional: PRTruth should prefer `UNPROVEN` over an AI-generated guess.
+
+### Is PRTruth an AI code review bot?
+
+No. It does not try to replace a reviewer or generate general review comments. Its job is narrower: verify what a pull request can actually prove about issue requirements and completion claims.
+
+### Does green CI mean the pull request is `PROVEN`?
+
+No. Green CI proves the checks that actually ran. A business rule, authorization requirement, compatibility claim, or edge-case claim can still remain `UNPROVEN`.
+
+### Can PRTruth block a merge?
+
+Yes. Use `strict` to fail on `FAILED` or `UNPROVEN`, or `failures-only` to block only when deterministic evidence explicitly contradicts a claim or requirement.
+
+### Can PRTruth verify private repositories?
+
+Yes, when it receives a GitHub token with the minimum read permissions needed for that repository.
 
 ## Current scope
 
