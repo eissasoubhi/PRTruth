@@ -41,6 +41,11 @@ describe("GitHub Action metadata", () => {
     expect(metadata).not.toContain("dist/cli.js");
   });
 
+  it("runs npx from a neutral temporary directory", () => {
+    expect(metadata).toContain('TEMP_DIR="$(mktemp -d)"');
+    expect(metadata).toContain('cd "$TEMP_DIR"');
+  });
+
   it("uses unauthenticated npm configuration and disables package scripts", () => {
     expect(metadata).toContain("NPM_CONFIG_USERCONFIG: /dev/null");
     expect(metadata).toContain('NPM_CONFIG_IGNORE_SCRIPTS: "true"');
