@@ -2,6 +2,23 @@
 
 All notable changes to PRTruth are documented in this file.
 
+## 0.1.4
+
+Whole-CI evidence hardening release.
+
+### Fixed
+
+- Generic claims such as `CI is green` or `Full CI completes successfully` now use top-level GitHub checks instead of being left `UNPROVEN` when decisive CI evidence exists.
+- An observed top-level CI failure, cancellation, timeout, action-required state, or startup failure now makes a whole-CI success claim `FAILED`.
+- Skipped or otherwise non-successful top-level checks do not become false `PROVEN` results.
+- Step-level evidence remains available for specific install/test/lint/typecheck/build claims and is not allowed to hide a failed top-level job.
+
+### Dogfooding
+
+- Added public `eissasoubhi/jobpilot` issue #6 / PR #5 to the recurring real-project suite.
+- The JobPilot case exposed the false negative above: `Backend tests` was failed while a `Full GitHub-hosted CI must pass` claim was only `UNPROVEN` before this fix.
+- The suite keeps the separate `no validation gate was removed or weakened` requirement `UNPROVEN`, preserving the boundary between CI status and stronger process evidence.
+
 ## 0.1.3
 
 GitHub Actions adoption release.
