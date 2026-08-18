@@ -2,6 +2,22 @@
 
 All notable changes to PRTruth are documented in this file.
 
+## 0.1.2
+
+Real-project verification hardening release.
+
+### Improved
+
+- `UNPROVEN` business claims can now show relevant changed files as candidate evidence without treating filename relevance as proof.
+- Real-project dogfooding runs weekly against public `ai-saas-factory` issue/PR histories and stores JSON verification reports as workflow artifacts.
+- The dogfood workflow validates the published npm package and CLI version from a neutral temporary directory.
+
+### Fixed
+
+- Specific test-coverage claims such as `tests for signatures, replay tolerance, ...` are no longer marked `PROVEN` solely because a generic test command succeeded.
+- Specific coverage claims remain `UNPROVEN` until PRTruth can deterministically show that the named behaviors are exercised, while relevant changed test files can still be displayed as evidence candidates.
+- Scoped compatibility claims such as `No breaking API changes` and `No breaking schema changes` now keep the stronger compatibility-evidence safeguard instead of falling back to filename heuristics.
+
 ## 0.1.1
 
 Dogfooding and discoverability release.
