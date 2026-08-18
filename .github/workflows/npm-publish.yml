@@ -117,3 +117,31 @@ jobs:
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Verify published package from public registry
+        shell: bash
+        env:
+          NPM_CONFIG_USERCONFIG: /dev/null
+        run: |
+          PACKAGE_NAME="$(node -p "require('./package.json').name")"
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+
+          for attempt in $(seq 1 20); do
+            PUBLISHED_VERSION="$(npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" version --silent 2>/dev/null || true)"
+            if [[ "${PUBLISHED_VERSION}" == "${PACKAGE_VERSION}" ]]; then
+              TEMP_DIR="$(mktemp -d)"
+              if CLI_VERSION="$(cd "${TEMP_DIR}" && npx -y "${PACKAGE_NAME}@${PACKAGE_VERSION}" --version 2>/dev/null)" \
+                && [[ "${CLI_VERSION}" == "${PACKAGE_VERSION}" ]]; then
+                echo "Verified ${PACKAGE_NAME}@${PACKAGE_VERSION} from the public npm registry."
+                exit 0
+              fi
+            fi
+
+            if [[ "${attempt}" -eq 20 ]]; then
+              echo "${PACKAGE_NAME}@${PACKAGE_VERSION} was not installable from the public npm registry after ${attempt} attempts."
+              exit 1
+            fi
+
+            echo "Registry has not exposed a usable ${PACKAGE_NAME}@${PACKAGE_VERSION} yet; retrying in 6s (${attempt}/20)."
+            sleep 6
+          done
