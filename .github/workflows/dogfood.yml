@@ -46,7 +46,9 @@ jobs:
         run: |
           EXPECTED_VERSION="$(node -p "require('./package.json').version")"
           PUBLISHED_VERSION="$(npm view "prtruth@${EXPECTED_VERSION}" version --silent)"
+          LATEST_VERSION="$(npm view prtruth dist-tags.latest --silent)"
           test "${PUBLISHED_VERSION}" = "${EXPECTED_VERSION}"
+          test "${LATEST_VERSION}" = "${EXPECTED_VERSION}"
           TEMP_DIR="$(mktemp -d)"
           cd "${TEMP_DIR}"
           CLI_VERSION="$(npx -y "prtruth@${EXPECTED_VERSION}" --version)"
