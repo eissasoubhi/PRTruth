@@ -1,87 +1,208 @@
 # PRTruth
 
-**Your agent says it’s done. Check the evidence.**
+**Your pull request says it is done. PRTruth checks the evidence.**
 
-PRTruth verifies whether an existing GitHub pull request actually proves the requirements of the issue it claims to solve.
+PRTruth is an open-source CLI and GitHub Action for **pull request verification**. Give it a GitHub issue and a pull request; it compares the issue's acceptance criteria with evidence from the PR, changed files, GitHub Actions/CI checks, repository instructions, and completion claims.
 
-PRTruth starts from artifacts teams already have: a GitHub issue, a pull request and its diff, CI results, and repository instructions such as `AGENTS.md`, `CLAUDE.md`, and `CONTRIBUTING.md`.
+It returns deliberately strict results:
 
-It reports three deliberately strict outcomes:
+- **PROVEN** — PRTruth found concrete evidence for the requirement or claim.
+- **FAILED** — the available evidence contradicts it or a required check failed.
+- **UNPROVEN** — there is not enough evidence to say it is done.
 
-- **PROVEN** — concrete supporting evidence exists;
-- **FAILED** — evidence contradicts the requirement or a required check failed;
-- **UNPROVEN** — there is not enough evidence to justify success.
+PRTruth is useful when humans, AI coding agents, or automation produce PRs faster than reviewers can manually verify every completion claim.
 
-> PRTruth does not ask “did the agent say it finished?” It asks “what can we prove from the repository?”
+> PRTruth does not ask “does this change look convincing?” It asks “what can this repository actually prove?”
 
-## Quick start
+## 60-second example
+
+Suppose an issue says:
+
+```text
+Acceptance criteria
+- Export endpoint exists
+- Only admins can export
+- Tests pass
+- No breaking changes
+```
+
+A PR says everything is complete. Run:
 
 ```bash
 npx prtruth verify --issue 148 --pr 152
 ```
 
+PRTruth can report:
+
 ```text
 Requirement                         Result
 ────────────────────────────────────────────
-Export endpoint exists             ✓ PROVEN
-Admin authentication               ✓ PROVEN
-Maximum 10,000 records             ⚠ UNPROVEN
+Export endpoint exists             ⚠ UNPROVEN
+Only admins can export             ⚠ UNPROVEN
+Tests pass                          ✓ PROVEN
 No breaking changes                ⚠ UNPROVEN
-Tests pass                         ✓ PROVEN
 
 Verdict: NOT PROVEN
-3 / 5 requirements verified
 ```
 
-PRTruth reads the issue and pull request, extracts acceptance criteria and completion claims, inspects changed files and CI/check results, discovers repository instruction files, and renders terminal, Markdown, and JSON evidence reports.
+A green test check can prove that the observed test check passed. It does **not** automatically prove authorization behavior or backward compatibility. PRTruth prefers `UNPROVEN` over inventing certainty.
 
-### Keep one evidence comment on the pull request
+## Why use PRTruth?
 
-Pass `--comment` to publish the Markdown verification report back to the pull request:
+A normal CI pipeline answers questions such as **“did the tests/build/lint pass?”**. PRTruth adds another layer:
+
+**“Do the artifacts around this PR actually support the requirements and the claims being made?”**
+
+That is useful for:
+
+- reviewing pull requests created by AI coding agents such as Codex, Claude Code, Cursor, Copilot, Gemini CLI, and OpenCode;
+- checking whether issue acceptance criteria have evidence before merge;
+- fact-checking claims such as “tests pass”, “build passes”, or “no breaking changes”;
+- creating a machine-readable verification receipt for automation and audit trails;
+- keeping a strict boundary between evidence and guesses.
+
+## How it works
+
+PRTruth currently follows an evidence-first, deterministic pipeline:
+
+```text
+GitHub issue
+   ↓
+Acceptance criteria
+   ↓
+Pull request ── changed files / CI / claims / repo instructions
+   ↓
+Evidence matching
+   ↓
+PROVEN / FAILED / UNPROVEN
+```
+
+PRTruth **does not currently send your code to an LLM to decide whether it is correct**. The core verifier uses deterministic rules and structured GitHub evidence. This keeps results explainable, reproducible, and conservative.
+
+See [How PRTruth works](docs/how-it-works.md) for the technical model and current limitations.
+
+## Try it on a public repository
+
+No GitHub token is required for a basic public-repository check:
+
+```bash
+npx -y prtruth@latest verify \
+  --repo eissasoubhi/ai-saas-factory \
+  --issue 1 \
+  --pr 3 \
+  --policy report-only
+```
+
+For a repository detected from your local Git remote:
+
+```bash
+npx prtruth verify --issue 148 --pr 152 --policy report-only
+```
+
+`report-only` is convenient for exploration because it prints the evidence report without failing the command for an `UNPROVEN` result.
+
+## Private repositories
+
+Set a GitHub token that can read the repository:
+
+```bash
+GITHUB_TOKEN=... npx prtruth verify \
+  --repo owner/private-repo \
+  --issue 148 \
+  --pr 152 \
+  --policy report-only
+```
+
+Do not commit the token. In GitHub Actions, use the workflow's `GITHUB_TOKEN` with only the permissions you need.
+
+## Report formats
+
+Terminal output is the default:
+
+```bash
+npx prtruth verify --issue 148 --pr 152
+```
+
+Other formats:
+
+```bash
+npx prtruth verify --issue 148 --pr 152 --format markdown
+npx prtruth verify --issue 148 --pr 152 --format json
+npx prtruth verify --issue 148 --pr 152 --format badge
+```
+
+Write the selected report to a file:
+
+```bash
+npx prtruth verify --issue 148 --pr 152 --format json --output prtruth.json
+```
+
+## Keep one evidence comment on the PR
+
+Pass `--comment` to create or update a PRTruth Markdown report on the pull request:
 
 ```bash
 GITHUB_TOKEN=... npx prtruth verify --issue 148 --pr 152 --comment
 ```
 
-PRTruth marks its comment with a hidden identifier. Re-running the command updates the existing PRTruth comment instead of adding another one, including on pull requests with more than 100 comments. Comment publishing requires a GitHub token with permission to write pull-request issue comments.
+PRTruth uses a hidden marker so re-running the command updates its existing comment instead of creating comment spam.
 
-## README badge
+## GitHub Actions
 
-Generate a Markdown badge from a verification result:
+PRTruth can also be used as a merge/review signal inside GitHub Actions. The repository includes an `action.yml` and configurable verification policies so teams can decide whether `FAILED`, `UNPROVEN`, or both should block a workflow.
+
+The three policies are:
+
+- `strict` — fail on `FAILED` or `UNPROVEN`;
+- `failures-only` — fail only on explicit `FAILED` evidence;
+- `report-only` — report results without using the verdict as a process gate.
+
+## What PRTruth can and cannot prove
+
+PRTruth is intentionally conservative.
+
+Good deterministic evidence includes:
+
+- completed GitHub checks and CI steps;
+- changed files relevant to a requirement;
+- test, lint, typecheck, build, API/schema, and static-analysis evidence;
+- repository instructions such as `AGENTS.md`, `CLAUDE.md`, and `CONTRIBUTING.md`;
+- supported agent-session evidence adapters;
+- signed/hash-addressed verification receipts.
+
+Some statements need stronger evidence than a normal diff or green CI can provide. For example, “no breaking changes”, “all edge cases are covered”, or a complex business rule should remain `UNPROVEN` unless PRTruth has a deterministic adapter capable of proving them.
+
+## Current scope
+
+PRTruth includes:
+
+- acceptance-criteria extraction from GitHub issues;
+- PR changed-file and GitHub check inspection;
+- completion-claim fact checking;
+- terminal, Markdown, JSON, and badge reports;
+- idempotent pull-request evidence comments;
+- JavaScript/TypeScript, PHPUnit/PHP, pytest/Python, Go, API/schema, and security/static-analysis evidence adapters;
+- Codex, Claude Code, Cursor, Copilot, Gemini CLI, and OpenCode session adapters;
+- signed and hash-addressed receipts;
+- evidence plugins and historical comparison.
+
+See [ROADMAP.md](ROADMAP.md) for the completed implementation roadmap and future direction.
+
+## Installation
+
+PRTruth is published on npm:
 
 ```bash
-npx prtruth verify --issue 148 --pr 152 --format badge
+npm install --save-dev prtruth
 ```
 
-Example output:
+or run it without installing:
 
-```markdown
-[![PRTruth: PROVEN](https://img.shields.io/badge/PRTruth-PROVEN-brightgreen)](https://github.com/owner/repository)
+```bash
+npx prtruth --help
 ```
 
-The badge reflects the same verification verdict as the normal report: `PROVEN`, `FAILED`, or `NOT PROVEN`. The `--policy` option controls process exit behavior independently from the rendered verdict.
-
-## What v0.1.0 includes
-
-- Evidence-based acceptance-criteria verification.
-- Completion-claim fact checking with concrete explanations.
-- GitHub Action and idempotent pull-request comments.
-- Terminal, Markdown, JSON, and badge output.
-- JavaScript/TypeScript, PHPUnit/PHP, pytest/Python, Go, API/schema, and security/static-analysis evidence adapters.
-- Agent-session evidence adapters for Codex, Claude Code, Cursor, Copilot, Gemini CLI, and OpenCode.
-- Signed and hash-addressed receipts, evidence plugins, and historical comparison.
-
-## Principles
-
-- Evidence over confidence.
-- Zero-config first.
-- Vendor-neutral.
-- Local/open source.
-- Deterministic where possible.
-
-## Roadmap
-
-The current implementation roadmap is tracked in [`ROADMAP.md`](ROADMAP.md).
+Package: [npmjs.com/package/prtruth](https://www.npmjs.com/package/prtruth)
 
 ## Development
 
