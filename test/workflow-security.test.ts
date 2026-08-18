@@ -38,4 +38,12 @@ describe("workflow checkout hardening", () => {
     expect(content).toContain("permissions:\n      contents: write");
     expect(content.match(/contents: write/g)).toHaveLength(1);
   });
+
+  it("rejects manual release dispatches from branches other than main", () => {
+    const content = workflow(".github/workflows/release.yml");
+
+    expect(content).toContain("Validate manual release source");
+    expect(content).toContain("if: github.event_name == 'workflow_dispatch'");
+    expect(content).toContain('if [[ "${GITHUB_REF}" != "refs/heads/main" ]]');
+  });
 });
