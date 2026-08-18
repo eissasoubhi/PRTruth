@@ -58,6 +58,20 @@ Self-hosted Linux ARM64 CI passes install, lint, typecheck, tests and production
     ]);
   });
 
+  it("does not turn validation failure reports into completion claims", () => {
+    const claims = extractCompletionClaims(`
+## Validation
+- Backend tests failed because the fixture service was unavailable.
+- Build failure is tracked separately.
+Typecheck failed on the self-hosted runner.
+- Frontend tests pass.
+`);
+
+    expect(claims.map((claim) => claim.text)).toEqual([
+      "Frontend tests pass."
+    ]);
+  });
+
   it("returns no claims for prose without explicit claim structure", () => {
     expect(extractCompletionClaims("This PR probably fixes the bug.")).toEqual([]);
   });
