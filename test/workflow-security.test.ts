@@ -30,7 +30,12 @@ describe("workflow checkout hardening", () => {
     }
   });
 
-  it("keeps release writes explicit through workflow permissions", () => {
-    expect(workflow(".github/workflows/release.yml")).toContain("permissions:\n  contents: write");
+  it("keeps release validation read-only and scopes writes to the publishing job", () => {
+    const content = workflow(".github/workflows/release.yml");
+
+    expect(content).toContain("permissions:\n  contents: read");
+    expect(content).toContain("publish:\n    name: create GitHub release");
+    expect(content).toContain("permissions:\n      contents: write");
+    expect(content.match(/contents: write/g)).toHaveLength(1);
   });
 });
