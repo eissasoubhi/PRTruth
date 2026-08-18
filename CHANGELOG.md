@@ -2,6 +2,34 @@
 
 All notable changes to PRTruth are documented in this file.
 
+## 0.1.5
+
+Evidence integrity and reviewer-navigation release.
+
+### Added
+
+- `UNPROVEN` requirements can surface a small set of relevant **added patch lines** with file and line references, helping reviewers find candidate evidence without treating textual similarity as proof.
+- Real JobPilot dogfooding now exposes implementation details such as `COMPOSER_MAX_PARALLEL_HTTP: 1`, cache reuse, and the actual retry counter while preserving conservative verdicts.
+
+### Reliability
+
+- GitHub check runs are now paginated beyond the first 100 results.
+- Workflow runs are paginated before selecting the latest run for each workflow.
+- Jobs inside selected workflow runs are paginated, preventing page-2 failures from disappearing from the evidence set.
+- Regression tests cover a 101st failing check, a latest workflow run on page 2, and a 101st failing workflow job.
+
+### Distribution
+
+- npm publication now verifies the exact public `name@version` after publish, retries registry propagation, and executes the released CLI from a clean temporary directory.
+- Consumer verification explicitly ignores authenticated npm configuration so a successful smoke proves public installability rather than access through the publish token.
+- Real-project dogfood now runs the exact-version npm smoke on workflow-change pull requests as well as scheduled/manual runs.
+- `prtruth@0.1.4` was successfully exercised by that unauthenticated npm smoke before this release.
+
+### Safety
+
+- Patch-text matches remain `UNPROVEN`; they are navigation evidence only and never upgrade a requirement to `PROVEN` by themselves.
+- The `ai` discovery keyword remains part of the npm package metadata.
+
 ## 0.1.4
 
 Whole-CI evidence hardening release.

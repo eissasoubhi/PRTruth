@@ -2,7 +2,7 @@
 
 **Your pull request says it is done. PRTruth checks the evidence.**
 
-PRTruth is an open-source CLI and GitHub Action for **pull request verification**. Give it a GitHub issue and a pull request; it compares the issue's acceptance criteria with evidence from the PR, changed files, GitHub Actions/CI checks, repository instructions, and completion claims.
+PRTruth is an open-source CLI and GitHub Action for **pull request verification**. Give it a GitHub issue and a pull request; it compares the issue's acceptance criteria with evidence from the PR, changed files and patch candidates, GitHub Actions/CI checks, repository instructions, and completion claims.
 
 It returns deliberately strict results:
 
@@ -47,6 +47,8 @@ Verdict: NOT PROVEN
 
 A green test check can prove that the observed test check passed. It does **not** automatically prove authorization behavior or backward compatibility. PRTruth prefers `UNPROVEN` over inventing certainty.
 
+When a requirement is not provable, PRTruth can still show a small number of relevant added patch lines to help the reviewer find where the implementation lives. Those lines remain **candidate evidence only** and never become `PROVEN` just because their text looks relevant.
+
 ## Why use PRTruth?
 
 A normal CI pipeline answers questions such as **“did the tests/build/lint pass?”**. PRTruth adds another layer:
@@ -70,7 +72,7 @@ GitHub issue
    ↓
 Acceptance criteria
    ↓
-Pull request ── changed files / CI / claims / repo instructions
+Pull request ── changed files / patch lines / CI / claims / repo instructions
    ↓
 Evidence matching
    ↓
@@ -174,7 +176,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: eissasoubhi/PRTruth@v0.1.3
+      - uses: eissasoubhi/PRTruth@v0.1.5
         with:
           pr: ${{ github.event.pull_request.number }}
           policy: report-only
@@ -191,7 +193,7 @@ PRTruth is intentionally conservative.
 Good deterministic evidence includes:
 
 - completed GitHub checks and CI steps;
-- changed files relevant to a requirement;
+- changed files and relevant added patch lines as navigation evidence;
 - test, lint, typecheck, build, API/schema, and static-analysis evidence;
 - repository instructions such as `AGENTS.md`, `CLAUDE.md`, and `CONTRIBUTING.md`;
 - supported agent-session evidence adapters;
@@ -204,7 +206,7 @@ Some statements need stronger evidence than a normal diff or green CI can provid
 PRTruth includes:
 
 - acceptance-criteria extraction from GitHub issues;
-- PR changed-file and GitHub check inspection;
+- PR changed-file, patch-candidate, GitHub check, and workflow-step inspection;
 - completion-claim fact checking;
 - terminal, Markdown, JSON, and badge reports;
 - idempotent pull-request evidence comments;
