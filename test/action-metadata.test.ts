@@ -31,8 +31,22 @@ describe("GitHub Action metadata", () => {
     expect(metadata).toContain('args+=(--issue "$PRTRUTH_ISSUE")');
   });
 
+  it("executes the exact package version published for the Action tag", () => {
+    expect(metadata).toContain(
+      "require(process.env.GITHUB_ACTION_PATH + '/package.json').version"
+    );
+    expect(metadata).toContain('npx -y "prtruth@${PRTRUTH_VERSION}" "${args[@]}"');
+    expect(metadata).not.toContain("npm install --ignore-scripts");
+    expect(metadata).not.toContain("npm run build");
+    expect(metadata).not.toContain("dist/cli.js");
+  });
+
+  it("uses unauthenticated npm configuration and disables package scripts", () => {
+    expect(metadata).toContain("NPM_CONFIG_USERCONFIG: /dev/null");
+    expect(metadata).toContain('NPM_CONFIG_IGNORE_SCRIPTS: "true"');
+  });
+
   it("passes policy and optional reporting controls to the released CLI", () => {
-    expect(metadata).toContain('node "$GITHUB_ACTION_PATH/dist/cli.js" "${args[@]}"');
     expect(metadata).toContain('--pr "$PRTRUTH_PR"');
     expect(metadata).toContain('--policy "$PRTRUTH_POLICY"');
     expect(metadata).toContain("args+=(--github-summary)");
