@@ -89,12 +89,13 @@ No GitHub token is required for a basic public-repository check:
 
 ```bash
 npx -y prtruth@latest verify \
-  --repo eissasoubhi/ai-saas-factory \
-  --pr 3 \
+  --repo owner/repository \
+  --issue 123 \
+  --pr 456 \
   --policy report-only
 ```
 
-PR #3 contains `Closes #1`, so PRTruth automatically verifies issue #1. You can always choose the issue explicitly with `--issue 1`.
+If the pull request contains exactly one closing reference such as `Closes #123`, you can omit `--issue 123` and PRTruth will infer it automatically.
 
 For a repository detected from your local Git remote:
 
@@ -176,7 +177,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: eissasoubhi/PRTruth@v0.1.5
+      - uses: eissasoubhi/PRTruth@v0.1.6
         with:
           pr: ${{ github.event.pull_request.number }}
           policy: report-only
