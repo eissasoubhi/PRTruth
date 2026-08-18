@@ -25,11 +25,16 @@ describe("GitHub Action metadata", () => {
     }
   });
 
+  it("allows the issue input to be omitted for linked-issue inference", () => {
+    expect(metadata).toContain("PRTRUTH_ISSUE: ${{ inputs.issue }}");
+    expect(metadata).toContain('if [[ -n "$PRTRUTH_ISSUE" ]]');
+    expect(metadata).toContain('args+=(--issue "$PRTRUTH_ISSUE")');
+  });
+
   it("passes policy and optional reporting controls to the released CLI", () => {
-    expect(metadata).toContain('dist/cli.js" "${args[@]}"');
-    expect(metadata).toContain('--issue "${{ inputs.issue }}"');
-    expect(metadata).toContain('--pr "${{ inputs.pr }}"');
-    expect(metadata).toContain('--policy "${{ inputs.policy }}"');
+    expect(metadata).toContain('node "$GITHUB_ACTION_PATH/dist/cli.js" "${args[@]}"');
+    expect(metadata).toContain('--pr "$PRTRUTH_PR"');
+    expect(metadata).toContain('--policy "$PRTRUTH_POLICY"');
     expect(metadata).toContain("args+=(--github-summary)");
     expect(metadata).toContain("args+=(--comment)");
     expect(metadata).not.toContain("--output");
