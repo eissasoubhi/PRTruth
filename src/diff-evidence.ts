@@ -140,11 +140,18 @@ function retryQuantityFromStatement(statement: string): number | null {
 function retryQuantityFromPatchLine(content: string): number | null {
   if (!/\b(?:retr(?:y|ies|ying)|attempts?)\b/i.test(content)) return null;
 
-  const fraction = content.match(/\/(\d+)\b/);
-  if (fraction?.[1]) return Number.parseInt(fraction[1], 10);
+  const totalPatterns = [
+    /\/(\d+)\b/,
+    /\b(?:attempt|retry)\s+[^\s]+\s+of\s+(\d+)\b/i,
+    /\b(?:attempts?|retries?)\s+(?:up\s+to|at\s+most|maximum(?:\s+of)?|exactly)\s+(\d+)\b/i,
+    /\b(?:attempts|retries)\s+(\d+)\b/i,
+    /\b(?:up\s+to|at\s+most|maximum(?:\s+of)?|exactly)\s+(\d+)\s+(?:attempts?|retries?)\b/i
+  ];
 
-  const explicit = content.match(/\b(?:attempts?|retries?)\D{0,20}(\d+)\b/i);
-  if (explicit?.[1]) return Number.parseInt(explicit[1], 10);
+  for (const pattern of totalPatterns) {
+    const match = content.match(pattern);
+    if (match?.[1]) return Number.parseInt(match[1], 10);
+  }
 
   return null;
 }
