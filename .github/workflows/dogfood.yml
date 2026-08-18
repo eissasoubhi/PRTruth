@@ -75,6 +75,15 @@ jobs:
             --format json \
             --output dogfood-results/ai-saas-factory-2-4.json
 
+      - name: Verify JobPilot Composer retry
+        run: |
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo eissasoubhi/jobpilot \
+            --pr 5 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/jobpilot-6-5.json
+
       - name: Assert conservative real-world behavior
         shell: bash
         run: |
@@ -87,8 +96,15 @@ jobs:
           const v03 = JSON.parse(
             readFileSync('dogfood-results/ai-saas-factory-2-4.json', 'utf8')
           ).report;
+          const jobpilot = JSON.parse(
+            readFileSync('dogfood-results/jobpilot-6-5.json', 'utf8')
+          ).report;
 
-          for (const [name, report] of [['V0.2', v02], ['V0.3', v03]]) {
+          for (const [name, report] of [
+            ['V0.2', v02],
+            ['V0.3', v03],
+            ['JobPilot', jobpilot]
+          ]) {
             if (!Array.isArray(report.results) || report.results.length === 0) {
               throw new Error(`${name}: expected extracted acceptance criteria`);
             }
@@ -102,6 +118,9 @@ jobs:
 
           if (v02.issueNumber !== 1) {
             throw new Error(`V0.2: expected linked issue inference to resolve #1, got #${v02.issueNumber}`);
+          }
+          if (jobpilot.issueNumber !== 6) {
+            throw new Error(`JobPilot: expected linked issue inference to resolve #6, got #${jobpilot.issueNumber}`);
           }
 
           const coverageRequirement = v02.results.find((result) =>
@@ -146,11 +165,23 @@ jobs:
             throw new Error('V0.3: generic green CI must not be cited as proof of specific test coverage');
           }
 
+          const gateRequirement = jobpilot.results.find((result) =>
+            result.requirement?.text.includes('validation gate is removed or weakened')
+          );
+          if (!gateRequirement) {
+            throw new Error('JobPilot: expected the no-weakened-gates acceptance criterion');
+          }
+          if (gateRequirement.status !== 'UNPROVEN') {
+            throw new Error(
+              `JobPilot: no-weakened-gates requirement must remain UNPROVEN without stronger evidence, got ${gateRequirement.status}`
+            );
+          }
+
           console.log(`V0.2 inferred issue: #${v02.issueNumber}`);
           console.log(`V0.2 verdict: ${v02.verdict}`);
-          console.log(`V0.2 CI validation claim: ${validationClaim.status}`);
           console.log(`V0.3 verdict: ${v03.verdict}`);
-          console.log(`V0.3 specific test coverage: ${specificCoverageClaim.status}`);
+          console.log(`JobPilot inferred issue: #${jobpilot.issueNumber}`);
+          console.log(`JobPilot verdict: ${jobpilot.verdict}`);
           NODE
 
       - name: Upload dogfood reports
