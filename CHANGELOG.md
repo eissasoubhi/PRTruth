@@ -2,6 +2,22 @@
 
 All notable changes to PRTruth are documented in this file.
 
+## 0.1.8
+
+Evidence semantics and release-distribution reliability patch.
+
+### Fixed
+
+- Validation text that reports a failure such as `tests failed` is no longer extracted as a positive completion claim and then misleadingly fact-checked as though it claimed success.
+- npm publication no longer races GitHub release creation on every push to `main`; automatic npm publication now starts from the published GitHub release event, with manual tag-based recovery still available.
+- Manual GitHub release dispatches are rejected when launched from a branch other than `main`, preventing an unintended branch commit from becoming a version tag solely because its package version matches.
+
+### Reliability and security
+
+- GitHub release creation remains split between read-only validation and a narrowly scoped `contents: write` publishing job.
+- Release and npm workflows keep checkout credentials non-persistent.
+- The `ai` npm discovery keyword remains unchanged.
+
 ## 0.1.7
 
 Evidence clarity, discoverability, and workflow hardening release.
