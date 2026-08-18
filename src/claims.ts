@@ -2,6 +2,9 @@ import type { CompletionClaim } from "./types.js";
 
 const CLAIM_SECTION = /^(?:#{1,6}\s+)?(?:completion claims?|claims?|validation|what changed|changes|implemented|included|done)\s*:??\s*$/i;
 const HEADING = /^#{1,6}\s+/;
+const VALIDATION_TERM = /\b(?:ci|tests?|test suite|lint(?:ing)?|type[ -]?check|typescript|build|compile|compilation|install(?:ation)?|dependencies)\b/i;
+const SUCCESS_TERM = /\b(?:pass(?:es|ed)?|succeed(?:s|ed)?|success(?:ful(?:ly)?)?|green|complete(?:s|d)?)\b/i;
+const FAILURE_TERM = /\b(?:fail(?:s|ed|ure)?|broken|red)\b/i;
 
 function cleanItem(value: string): string {
   return value
@@ -12,8 +15,13 @@ function cleanItem(value: string): string {
 }
 
 function looksLikeValidationProse(value: string): boolean {
-  return /\b(?:ci|tests?|test suite|lint(?:ing)?|type[ -]?check|typescript|build|compile|compilation|install(?:ation)?|dependencies)\b/i.test(value)
-    && /\b(?:pass(?:es|ed)?|succeed(?:s|ed)?|success(?:ful(?:ly)?)?|green|complete(?:s|d)?|fail(?:s|ed|ure)?)\b/i.test(value);
+  return VALIDATION_TERM.test(value) && SUCCESS_TERM.test(value);
+}
+
+function looksLikeFailureReport(value: string): boolean {
+  return VALIDATION_TERM.test(value)
+    && FAILURE_TERM.test(value)
+    && !SUCCESS_TERM.test(value);
 }
 
 export function extractCompletionClaims(body: string): CompletionClaim[] {
@@ -37,11 +45,14 @@ export function extractCompletionClaims(body: string): CompletionClaim[] {
 
     const checked = trimmed.match(/^[-*+]\s+\[[xX]\]\s+(.+)$/);
     if (checked) {
-      claims.push({
-        id: `claim-${claims.length + 1}`,
-        text: cleanItem(checked[1] ?? ""),
-        source: "checked-checklist"
-      });
+      const text = cleanItem(checked[1] ?? "");
+      if (!looksLikeFailureReport(text)) {
+        claims.push({
+          id: `claim-${claims.length + 1}`,
+          text,
+          source: "checked-checklist"
+        });
+      }
       continue;
     }
 
@@ -49,7 +60,7 @@ export function extractCompletionClaims(body: string): CompletionClaim[] {
 
     if (/^[-*+]\s+/.test(trimmed) || /^\d+[.)]\s+/.test(trimmed)) {
       const text = cleanItem(trimmed);
-      if (text.length >= 4) {
+      if (text.length >= 4 && !looksLikeFailureReport(text)) {
         claims.push({
           id: `claim-${claims.length + 1}`,
           text,
