@@ -26,7 +26,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: eissasoubhi/PRTruth@v0.1.3
+      - uses: eissasoubhi/PRTruth@v0.1.5
         with:
           pr: ${{ github.event.pull_request.number }}
           policy: report-only
@@ -36,7 +36,7 @@ That is enough to:
 
 - infer the issue number from the PR description;
 - read the issue acceptance criteria;
-- inspect the PR, changed files, GitHub checks, and workflow steps;
+- inspect the PR, changed files, GitHub checks, workflow steps, and relevant patch candidates;
 - add the Markdown report to the GitHub Actions job summary;
 - keep the workflow non-blocking while you evaluate PRTruth.
 
@@ -69,7 +69,7 @@ permissions:
   actions: read
 
 steps:
-  - uses: eissasoubhi/PRTruth@v0.1.3
+  - uses: eissasoubhi/PRTruth@v0.1.5
     with:
       pr: ${{ github.event.pull_request.number }}
       policy: report-only
