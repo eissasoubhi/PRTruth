@@ -1,7 +1,11 @@
 import { buildClaimResults } from "./claim-evidence.js";
 import { assessGenericCiSuccess } from "./ci-evidence.js";
 import { extractCompletionClaims } from "./claims.js";
-import { findPatchCandidateEvidence, type PatchFile } from "./diff-evidence.js";
+import {
+  findPatchCandidateEvidence,
+  findQuantitativePatchMismatchEvidence,
+  type PatchFile
+} from "./diff-evidence.js";
 import { GitHubClient } from "./github.js";
 import { discoverInstructionFiles } from "./instructions.js";
 import { resolveIssueNumber } from "./linked-issue.js";
@@ -92,6 +96,16 @@ function evaluateRequirement(
         }))
       };
     }
+  }
+
+  const quantitativeMismatch = findQuantitativePatchMismatchEvidence(requirement.text, files);
+  if (quantitativeMismatch.length > 0) {
+    return {
+      requirement,
+      status: "UNPROVEN",
+      reason: "Patch evidence contains a possible quantitative mismatch that needs review before this requirement can be proven.",
+      evidence: quantitativeMismatch
+    };
   }
 
   const patchCandidates = findPatchCandidateEvidence(requirement.text, files);
