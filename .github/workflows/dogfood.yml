@@ -42,6 +42,7 @@ jobs:
         run: pnpm build
 
       - name: Published npm package smoke
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           EXPECTED_VERSION="$(node -p "require('./package.json').version")"
@@ -59,7 +60,6 @@ jobs:
           mkdir -p dogfood-results
           env -u GITHUB_TOKEN node dist/cli.js verify \
             --repo eissasoubhi/ai-saas-factory \
-            --issue 1 \
             --pr 3 \
             --policy report-only \
             --format json \
@@ -98,6 +98,10 @@ jobs:
             if (!['PROVEN', 'FAILED', 'NOT_PROVEN'].includes(report.verdict)) {
               throw new Error(`${name}: unexpected verdict ${report.verdict}`);
             }
+          }
+
+          if (v02.issueNumber !== 1) {
+            throw new Error(`V0.2: expected linked issue inference to resolve #1, got #${v02.issueNumber}`);
           }
 
           const coverageRequirement = v02.results.find((result) =>
@@ -142,6 +146,7 @@ jobs:
             throw new Error('V0.3: generic green CI must not be cited as proof of specific test coverage');
           }
 
+          console.log(`V0.2 inferred issue: #${v02.issueNumber}`);
           console.log(`V0.2 verdict: ${v02.verdict}`);
           console.log(`V0.2 CI validation claim: ${validationClaim.status}`);
           console.log(`V0.3 verdict: ${v03.verdict}`);
