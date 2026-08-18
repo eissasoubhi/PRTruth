@@ -1,0 +1,134 @@
+name: Real project dogfood
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 6 * * 1"
+  pull_request:
+    paths:
+      - ".github/workflows/dogfood.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-public-prs:
+    name: verify real public PR histories
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Published npm package smoke
+        shell: bash
+        run: |
+          EXPECTED_VERSION="$(node -p "require('./package.json').version")"
+          PUBLISHED_VERSION="$(npm view "prtruth@${EXPECTED_VERSION}" version --silent)"
+          test "${PUBLISHED_VERSION}" = "${EXPECTED_VERSION}"
+          TEMP_DIR="$(mktemp -d)"
+          cd "${TEMP_DIR}"
+          CLI_VERSION="$(npx -y "prtruth@${EXPECTED_VERSION}" --version)"
+          test "${CLI_VERSION}" = "${EXPECTED_VERSION}"
+
+      - name: Verify ai-saas-factory V0.2
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo eissasoubhi/ai-saas-factory \
+            --issue 1 \
+            --pr 3 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/ai-saas-factory-1-3.json
+
+      - name: Verify ai-saas-factory V0.3
+        run: |
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo eissasoubhi/ai-saas-factory \
+            --issue 2 \
+            --pr 4 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/ai-saas-factory-2-4.json
+
+      - name: Assert conservative real-world behavior
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const v02 = JSON.parse(
+            readFileSync('dogfood-results/ai-saas-factory-1-3.json', 'utf8')
+          ).report;
+          const v03 = JSON.parse(
+            readFileSync('dogfood-results/ai-saas-factory-2-4.json', 'utf8')
+          ).report;
+
+          for (const [name, report] of [['V0.2', v02], ['V0.3', v03]]) {
+            if (!Array.isArray(report.results) || report.results.length === 0) {
+              throw new Error(`${name}: expected extracted acceptance criteria`);
+            }
+            if (!Array.isArray(report.checks) || report.checks.length === 0) {
+              throw new Error(`${name}: expected GitHub CI evidence`);
+            }
+            if (!['PROVEN', 'FAILED', 'NOT_PROVEN'].includes(report.verdict)) {
+              throw new Error(`${name}: unexpected verdict ${report.verdict}`);
+            }
+          }
+
+          const coverageRequirement = v02.results.find((result) =>
+            result.requirement?.text === 'Automated tests for core identity/workspace flows'
+          );
+          if (!coverageRequirement) {
+            throw new Error('V0.2: expected the real test-coverage acceptance criterion');
+          }
+          if (coverageRequirement.status !== 'UNPROVEN') {
+            throw new Error(
+              `V0.2: broad coverage requirement must stay UNPROVEN, got ${coverageRequirement.status}`
+            );
+          }
+
+          const validationClaim = (v02.claimResults ?? []).find((result) =>
+            result.claim?.text?.includes('CI passes install, lint, typecheck, tests and production build')
+          );
+          if (!validationClaim) {
+            throw new Error('V0.2: expected the prose CI validation claim');
+          }
+          if (validationClaim.status !== 'PROVEN') {
+            throw new Error(`V0.2: expected composite CI validation to be PROVEN, got ${validationClaim.status}`);
+          }
+
+          console.log(`V0.2 verdict: ${v02.verdict}`);
+          console.log(`V0.2 CI validation claim: ${validationClaim.status}`);
+          console.log(`V0.3 verdict: ${v03.verdict}`);
+          NODE
+
+      - name: Upload dogfood reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prtruth-real-project-reports
+          path: dogfood-results/*.json
+          if-no-files-found: warn
