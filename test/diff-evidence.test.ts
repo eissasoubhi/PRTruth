@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { findPatchCandidateEvidence } from "../src/diff-evidence.js";
+import {
+  findPatchCandidateEvidence,
+  findQuantitativePatchMismatchEvidence
+} from "../src/diff-evidence.js";
 
 const composerRetryPatch = `@@ -51,7 +51,26 @@ jobs:
        - name: Install backend dependencies
@@ -37,6 +40,41 @@ describe("patch candidate evidence", () => {
     );
 
     expect(evidence.some((item) => item.summary.includes("attempt ${attempt}/5"))).toBe(true);
+  });
+
+  it("flags a possible quantitative retry mismatch without inventing a verdict", () => {
+    const evidence = findQuantitativePatchMismatchEvidence(
+      "Backend dependency installation retries up to three times within the same runner.",
+      [{ filename: ".github/workflows/ci.yml", patch: composerRetryPatch }]
+    );
+
+    expect(evidence).toHaveLength(1);
+    expect(evidence[0]?.summary).toContain("Possible quantitative mismatch");
+    expect(evidence[0]?.summary).toContain("requirement quantity 3");
+    expect(evidence[0]?.summary).toContain("patch retry/attempt quantity 5");
+    expect(evidence.every((item) => !("status" in item))).toBe(true);
+  });
+
+  it("does not flag a retry quantity that matches the requirement", () => {
+    const matchingPatch = composerRetryPatch.replaceAll("/5", "/3");
+    const evidence = findQuantitativePatchMismatchEvidence(
+      "Backend dependency installation retries up to three times within the same runner.",
+      [{ filename: ".github/workflows/ci.yml", patch: matchingPatch }]
+    );
+
+    expect(evidence).toEqual([]);
+  });
+
+  it("ignores unrelated numeric changes", () => {
+    const evidence = findQuantitativePatchMismatchEvidence(
+      "Backend dependency installation retries up to three times within the same runner.",
+      [{
+        filename: ".github/workflows/ci.yml",
+        patch: "@@ -1,1 +1,2 @@\n+timeout-minutes: 15\n+cache-version: 5"
+      }]
+    );
+
+    expect(evidence).toEqual([]);
   });
 
   it("surfaces cache reuse language", () => {

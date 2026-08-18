@@ -19,6 +19,19 @@ const STOP_WORDS = new Set([
   "les", "des", "une", "dans", "avec", "pour", "que", "qui", "sur", "est", "être", "doit", "doivent"
 ]);
 
+const NUMBER_WORDS = new Map<string, number>([
+  ["one", 1],
+  ["two", 2],
+  ["three", 3],
+  ["four", 4],
+  ["five", 5],
+  ["six", 6],
+  ["seven", 7],
+  ["eight", 8],
+  ["nine", 9],
+  ["ten", 10]
+]);
+
 function canonicalToken(token: string): string {
   const lower = token.toLowerCase();
 
@@ -97,6 +110,71 @@ function scoreLine(statementTerms: Set<string>, line: PatchLine): number {
 function compactLine(content: string): string {
   const singleLine = content.replace(/\s+/g, " ").trim();
   return singleLine.length > 120 ? `${singleLine.slice(0, 117)}...` : singleLine;
+}
+
+function parseQuantity(value: string): number | null {
+  if (/^\d+$/.test(value)) return Number.parseInt(value, 10);
+  return NUMBER_WORDS.get(value.toLowerCase()) ?? null;
+}
+
+function retryQuantityFromStatement(statement: string): number | null {
+  if (!/\b(?:retr(?:y|ies)|attempts?|times?)\b/i.test(statement)) return null;
+
+  const quantity = "(?:\\d+|one|two|three|four|five|six|seven|eight|nine|ten)";
+  const patterns = [
+    new RegExp(`\\b(?:retries?|attempts?)\\s+(?:up\\s+to\\s+|at\\s+most\\s+|exactly\\s+)?(${quantity})\\s+(?:times?|attempts?|retries?)?\\b`, "i"),
+    new RegExp(`\\b(?:up\\s+to|at\\s+most|maximum(?:\\s+of)?|exactly)\\s+(${quantity})\\s+(?:times?|attempts?|retries?)\\b`, "i"),
+    new RegExp(`\\b(${quantity})\\s+(?:attempts?|retries?)\\b`, "i")
+  ];
+
+  for (const pattern of patterns) {
+    const match = statement.match(pattern);
+    if (!match?.[1]) continue;
+    const parsed = parseQuantity(match[1]);
+    if (parsed !== null) return parsed;
+  }
+
+  return null;
+}
+
+function retryQuantityFromPatchLine(content: string): number | null {
+  if (!/\b(?:retr(?:y|ies|ying)|attempts?)\b/i.test(content)) return null;
+
+  const fraction = content.match(/\/(\d+)\b/);
+  if (fraction?.[1]) return Number.parseInt(fraction[1], 10);
+
+  const explicit = content.match(/\b(?:attempts?|retries?)\D{0,20}(\d+)\b/i);
+  if (explicit?.[1]) return Number.parseInt(explicit[1], 10);
+
+  return null;
+}
+
+export function findQuantitativePatchMismatchEvidence(
+  statement: string,
+  files: PatchFile[],
+  limit = 2
+): Evidence[] {
+  const expected = retryQuantityFromStatement(statement);
+  if (expected === null || limit <= 0) return [];
+
+  const statementTerms = tokenize(statement);
+  const evidence: Evidence[] = [];
+
+  for (const line of files.flatMap(addedPatchLines)) {
+    if (scoreLine(statementTerms, line) < 2) continue;
+
+    const observed = retryQuantityFromPatchLine(line.content);
+    if (observed === null || observed === expected) continue;
+
+    evidence.push({
+      kind: "diff",
+      summary: `Possible quantitative mismatch: ${line.filename}:${line.lineNumber} — requirement quantity ${expected}, patch retry/attempt quantity ${observed} — ${compactLine(line.content)}`
+    });
+
+    if (evidence.length >= limit) break;
+  }
+
+  return evidence;
 }
 
 export function findPatchCandidateEvidence(
