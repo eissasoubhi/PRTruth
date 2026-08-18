@@ -17,7 +17,7 @@ describe("GitHub evidence pagination", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
 
-      if (url.includes("/check-runs?") && url.includes("page=1")) {
+      if (url.includes("/check-runs?") && url.includes("&page=1")) {
         return jsonResponse({
           check_runs: Array.from({ length: 100 }, (_, index) => ({
             name: `check-${index + 1}`,
@@ -27,7 +27,7 @@ describe("GitHub evidence pagination", () => {
         });
       }
 
-      if (url.includes("/check-runs?") && url.includes("page=2")) {
+      if (url.includes("/check-runs?") && url.includes("&page=2")) {
         return jsonResponse({
           check_runs: [
             {
@@ -50,14 +50,14 @@ describe("GitHub evidence pagination", () => {
       name: "late-failing-check",
       conclusion: "failure"
     });
-    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("page=2"))).toBe(true);
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("&page=2"))).toBe(true);
   });
 
   it("paginates workflow runs before choosing the latest run per workflow", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
 
-      if (url.includes("/actions/runs?head_sha=") && url.includes("page=1")) {
+      if (url.includes("/actions/runs?head_sha=") && url.includes("&page=1")) {
         return jsonResponse({
           workflow_runs: Array.from({ length: 100 }, (_, index) => ({
             id: index + 1,
@@ -66,11 +66,11 @@ describe("GitHub evidence pagination", () => {
         });
       }
 
-      if (url.includes("/actions/runs?head_sha=") && url.includes("page=2")) {
+      if (url.includes("/actions/runs?head_sha=") && url.includes("&page=2")) {
         return jsonResponse({ workflow_runs: [{ id: 101, workflow_id: 7 }] });
       }
 
-      if (url.includes("/actions/runs/101/jobs?") && url.includes("page=1")) {
+      if (url.includes("/actions/runs/101/jobs?") && url.includes("&page=1")) {
         return jsonResponse({ jobs: [] });
       }
 
@@ -92,11 +92,11 @@ describe("GitHub evidence pagination", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
 
-      if (url.includes("/actions/runs?head_sha=") && url.includes("page=1")) {
+      if (url.includes("/actions/runs?head_sha=") && url.includes("&page=1")) {
         return jsonResponse({ workflow_runs: [{ id: 501, workflow_id: 9 }] });
       }
 
-      if (url.includes("/actions/runs/501/jobs?") && url.includes("page=1")) {
+      if (url.includes("/actions/runs/501/jobs?") && url.includes("&page=1")) {
         return jsonResponse({
           jobs: Array.from({ length: 100 }, (_, index) => ({
             name: `job-${index + 1}`,
@@ -107,7 +107,7 @@ describe("GitHub evidence pagination", () => {
         });
       }
 
-      if (url.includes("/actions/runs/501/jobs?") && url.includes("page=2")) {
+      if (url.includes("/actions/runs/501/jobs?") && url.includes("&page=2")) {
         return jsonResponse({
           jobs: [
             {
