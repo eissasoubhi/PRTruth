@@ -94,6 +94,17 @@ describe("assessCompletionClaim", () => {
     expect(assessment.reason).toContain("build");
   });
 
+  it("keeps a specific test-coverage claim unproven even when tests pass", () => {
+    const assessment = assessCompletionClaim(
+      "tests for signatures, replay tolerance, duplicate/busy/retry webhook claims, provider event ordering and paid-plan resolution",
+      [check("quality / Run pnpm test", "success")]
+    );
+
+    expect(assessment.status).toBe("UNPROVEN");
+    expect(assessment.matchedChecks).toEqual([]);
+    expect(assessment.reason).toContain("named behavior is exercised");
+  });
+
   it("keeps unsupported broad claims unproven", () => {
     const assessment = assessCompletionClaim("No regressions", [
       check("unit tests", "success"),
@@ -161,6 +172,36 @@ describe("buildClaimResults", () => {
         }
       ]
     });
+  });
+
+  it("shows candidate test files for a specific coverage claim without treating green CI as proof", () => {
+    const claims: CompletionClaim[] = [
+      {
+        id: "claim-1",
+        text: "tests for signatures, replay tolerance, duplicate/busy/retry webhook claims, provider event ordering and paid-plan resolution",
+        source: "claim-section"
+      }
+    ];
+
+    const [result] = buildClaimResults(
+      claims,
+      [check("quality / Run pnpm test", "success")],
+      [
+        "apps/web/lib/stripe-webhook.test.ts",
+        "packages/db/src/billing.test.ts",
+        "README.md"
+      ]
+    );
+
+    expect(result).toMatchObject({
+      status: "UNPROVEN",
+      reason: "A specific test-coverage claim requires evidence that the named behavior is exercised, not only a successful test run."
+    });
+    expect(result?.evidence).toContainEqual({
+      kind: "diff",
+      summary: "Changed file: apps/web/lib/stripe-webhook.test.ts"
+    });
+    expect(result?.evidence.some((item) => item.kind === "ci")).toBe(false);
   });
 
   it("does not weaken explicit compatibility safeguards with filename relevance", () => {
