@@ -19,11 +19,11 @@ inputs:
     required: false
     default: ${{ github.repository }}
   format:
-    description: Output format: terminal, markdown, json, or badge.
+    description: "Output format: terminal, markdown, json, or badge."
     required: false
     default: markdown
   policy:
-    description: Verification policy: strict, failures-only, or report-only.
+    description: "Verification policy: strict, failures-only, or report-only."
     required: false
     default: strict
   comment:
@@ -47,17 +47,14 @@ runs:
       with:
         node-version: 22.12.0
 
-    - name: Build PRTruth
-      shell: bash
-      working-directory: ${{ github.action_path }}
-      run: |
-        npm install --ignore-scripts
-        npm run build
-
     - name: Verify pull request
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.token }}
+        NPM_CONFIG_USERCONFIG: /dev/null
+        NPM_CONFIG_IGNORE_SCRIPTS: "true"
+        NPM_CONFIG_AUDIT: "false"
+        NPM_CONFIG_FUND: "false"
         PRTRUTH_REPO: ${{ inputs.repo }}
         PRTRUTH_ISSUE: ${{ inputs.issue }}
         PRTRUTH_PR: ${{ inputs.pr }}
@@ -66,6 +63,7 @@ runs:
         PRTRUTH_COMMENT: ${{ inputs.comment }}
         PRTRUTH_GITHUB_SUMMARY: ${{ inputs.github_summary }}
       run: |
+        PRTRUTH_VERSION="$(node -p "require(process.env.GITHUB_ACTION_PATH + '/package.json').version")"
         args=(
           verify
           --repo "$PRTRUTH_REPO"
@@ -86,4 +84,8 @@ runs:
           args+=(--comment)
         fi
 
-        node "$GITHUB_ACTION_PATH/dist/cli.js" "${args[@]}"
+        TEMP_DIR="$(mktemp -d)"
+        (
+          cd "$TEMP_DIR"
+          npx -y "prtruth@${PRTRUTH_VERSION}" "${args[@]}"
+        )

@@ -1,0 +1,32 @@
+name: GitHub Action smoke
+
+on:
+  pull_request:
+    paths:
+      - "action.yml"
+      - ".github/workflows/action-smoke.yml"
+      - "test/action-metadata.test.ts"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: run local Action against ai-saas-factory
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run PRTruth composite Action
+        uses: ./
+        with:
+          repo: eissasoubhi/ai-saas-factory
+          issue: 1
+          pr: 3
+          policy: report-only
+          github_summary: "false"
+          token: ""
