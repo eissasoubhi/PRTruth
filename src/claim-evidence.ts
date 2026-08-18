@@ -1,3 +1,4 @@
+import { assessGenericCiSuccess } from "./ci-evidence.js";
 import type {
   CheckRunSummary,
   ClaimResult,
@@ -140,6 +141,9 @@ export function assessCompletionClaim(
 
   const categories = claimCategories(claim);
   if (categories.length === 0) {
+    const overallCi = assessGenericCiSuccess(claim, checks);
+    if (overallCi) return overallCi;
+
     return {
       status: "UNPROVEN",
       reason: GENERIC_UNPROVEN_REASON,
