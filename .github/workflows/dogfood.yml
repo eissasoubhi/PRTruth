@@ -36,7 +36,7 @@ jobs:
           node-version: 22.12.0
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --prod=false
+        run: pnpm install --no-frozen-lockfile --prod=false --force
 
       - name: Build PRTruth
         run: pnpm build
