@@ -165,21 +165,25 @@ export class GitHubClient {
   }
 
   async getCheckRuns(repository: string, sha: string): Promise<GitHubCheckRunResponse[]> {
-    const response = await this.request<GitHubCheckRunsResponse>(
-      `/repos/${repository}/commits/${sha}/check-runs?per_page=100`
-    );
-
-    return response.check_runs;
+    return collectPages(async (page, perPage) => {
+      const response = await this.request<GitHubCheckRunsResponse>(
+        `/repos/${repository}/commits/${sha}/check-runs?per_page=${perPage}&page=${page}`
+      );
+      return response.check_runs;
+    });
   }
 
   async getWorkflowStepChecks(repository: string, sha: string): Promise<GitHubCheckRunResponse[]> {
     try {
-      const response = await this.request<GitHubWorkflowRunsResponse>(
-        `/repos/${repository}/actions/runs?head_sha=${encodeURIComponent(sha)}&per_page=100`
-      );
+      const workflowRuns = await collectPages(async (page, perPage) => {
+        const response = await this.request<GitHubWorkflowRunsResponse>(
+          `/repos/${repository}/actions/runs?head_sha=${encodeURIComponent(sha)}&per_page=${perPage}&page=${page}`
+        );
+        return response.workflow_runs;
+      });
 
       const latestByWorkflow = new Map<number, GitHubWorkflowRunResponse>();
-      for (const run of response.workflow_runs) {
+      for (const run of workflowRuns) {
         const current = latestByWorkflow.get(run.workflow_id);
         if (!current || run.id > current.id) {
           latestByWorkflow.set(run.workflow_id, run);
@@ -188,14 +192,17 @@ export class GitHubClient {
 
       const jobsByRun = await Promise.all(
         [...latestByWorkflow.values()].map((run) =>
-          this.request<GitHubWorkflowJobsResponse>(
-            `/repos/${repository}/actions/runs/${run.id}/jobs?per_page=100`
-          )
+          collectPages(async (page, perPage) => {
+            const response = await this.request<GitHubWorkflowJobsResponse>(
+              `/repos/${repository}/actions/runs/${run.id}/jobs?per_page=${perPage}&page=${page}`
+            );
+            return response.jobs;
+          })
         )
       );
 
-      return jobsByRun.flatMap((response) =>
-        response.jobs.flatMap((job) =>
+      return jobsByRun.flatMap((jobs) =>
+        jobs.flatMap((job) =>
           (job.steps ?? []).map((step) => ({
             name: `${job.name} / ${step.name}`,
             status: step.status,
