@@ -52,6 +52,15 @@ describe("generic CI evidence", () => {
     expect(assessment?.reason).toContain("Browser tests (skipped)");
   });
 
+  it("does not treat mere CI completion as a success claim", () => {
+    expect(
+      assessGenericCiSuccess("All CI checks completed", [
+        check("Backend", "failure"),
+        check("Frontend", "success")
+      ])
+    ).toBeNull();
+  });
+
   it("does not consume specific test claims", () => {
     expect(
       assessGenericCiSuccess("All tests pass", [check("unit tests", "success")])
