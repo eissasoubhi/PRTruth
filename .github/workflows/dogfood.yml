@@ -42,8 +42,9 @@ jobs:
         run: pnpm build
 
       - name: Published npm package smoke
-        if: github.event_name != 'pull_request'
         shell: bash
+        env:
+          NPM_CONFIG_USERCONFIG: /dev/null
         run: |
           EXPECTED_VERSION="$(node -p "require('./package.json').version")"
           PUBLISHED_VERSION="$(npm view "prtruth@${EXPECTED_VERSION}" version --silent)"
