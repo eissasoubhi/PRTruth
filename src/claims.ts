@@ -1,6 +1,6 @@
 import type { CompletionClaim } from "./types.js";
 
-const CLAIM_SECTION = /^(?:#{1,6}\s+)?(?:completion claims?|claims?|validation|what changed|changes|implemented|done)\s*:??\s*$/i;
+const CLAIM_SECTION = /^(?:#{1,6}\s+)?(?:completion claims?|claims?|validation|what changed|changes|implemented|included|done)\s*:??\s*$/i;
 const HEADING = /^#{1,6}\s+/;
 
 function cleanItem(value: string): string {
@@ -9,6 +9,11 @@ function cleanItem(value: string): string {
     .replace(/^\d+[.)]\s+/, "")
     .replace(/^\[[ xX]\]\s+/, "")
     .trim();
+}
+
+function looksLikeValidationProse(value: string): boolean {
+  return /\b(?:ci|tests?|test suite|lint(?:ing)?|type[ -]?check|typescript|build|compile|compilation|install(?:ation)?|dependencies)\b/i.test(value)
+    && /\b(?:pass(?:es|ed)?|succeed(?:s|ed)?|success(?:ful(?:ly)?)?|green|complete(?:s|d)?|fail(?:s|ed|ure)?)\b/i.test(value);
 }
 
 export function extractCompletionClaims(body: string): CompletionClaim[] {
@@ -51,6 +56,15 @@ export function extractCompletionClaims(body: string): CompletionClaim[] {
           source: "claim-section"
         });
       }
+      continue;
+    }
+
+    if (looksLikeValidationProse(trimmed)) {
+      claims.push({
+        id: `claim-${claims.length + 1}`,
+        text: trimmed,
+        source: "claim-section"
+      });
     }
   }
 

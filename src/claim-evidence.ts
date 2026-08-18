@@ -11,7 +11,7 @@ export interface ClaimEvidenceAssessment {
   matchedChecks: CheckRunSummary[];
 }
 
-type CheckCategory = "test" | "lint" | "type" | "build";
+type CheckCategory = "install" | "test" | "lint" | "type" | "build";
 
 const FAILED_CONCLUSIONS = new Set([
   "failure",
@@ -21,17 +21,24 @@ const FAILED_CONCLUSIONS = new Set([
   "startup_failure"
 ]);
 
-function claimCategory(claim: string): CheckCategory | null {
-  if (/\btests?\b|\btest suite\b/i.test(claim)) return "test";
-  if (/\blint(?:ing)?\b|eslint|phpstan|static analysis/i.test(claim)) return "lint";
-  if (/type[ -]?check|typescript/i.test(claim)) return "type";
-  if (/\bbuild\b|compile|compilation/i.test(claim)) return "build";
-  return null;
+function claimCategories(claim: string): CheckCategory[] {
+  const categories: CheckCategory[] = [];
+
+  if (/\binstall(?:ation|ed|s)?\b|\bdependencies\b/i.test(claim)) categories.push("install");
+  if (/\btests?\b|\btest suite\b/i.test(claim)) categories.push("test");
+  if (/\blint(?:ing)?\b|eslint|phpstan|static analysis/i.test(claim)) categories.push("lint");
+  if (/type[ -]?check|typescript/i.test(claim)) categories.push("type");
+  if (/\bbuild\b|compile|compilation/i.test(claim)) categories.push("build");
+
+  return categories;
 }
 
 function checkMatchesCategory(check: CheckRunSummary, category: CheckCategory): boolean {
   const name = check.name.toLowerCase();
 
+  if (category === "install") {
+    return /\binstall\b|dependencies|npm ci|pnpm install|composer install/.test(name);
+  }
   if (category === "test") {
     return /\btest\b|tests|vitest|jest|phpunit|pytest|go test/.test(name);
   }
@@ -50,6 +57,20 @@ function isNoBreakingChangesClaim(claim: string): boolean {
 
 function isNoRegressionClaim(claim: string): boolean {
   return /\bno\s+regressions?\b/i.test(claim);
+}
+
+function dedupeChecks(checks: CheckRunSummary[]): CheckRunSummary[] {
+  const seen = new Set<string>();
+  return checks.filter((check) => {
+    const key = `${check.name}\u0000${check.status}\u0000${check.conclusion ?? ""}\u0000${check.htmlUrl ?? ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function categoryLabel(categories: CheckCategory[]): string {
+  return categories.join(", ");
 }
 
 export function assessCompletionClaim(
@@ -72,8 +93,8 @@ export function assessCompletionClaim(
     };
   }
 
-  const category = claimCategory(claim);
-  if (!category) {
+  const categories = claimCategories(claim);
+  if (categories.length === 0) {
     return {
       status: "UNPROVEN",
       reason: "No deterministic evidence rule currently matches this completion claim.",
@@ -81,11 +102,17 @@ export function assessCompletionClaim(
     };
   }
 
-  const matchedChecks = checks.filter((check) => checkMatchesCategory(check, category));
-  if (matchedChecks.length === 0) {
+  const matchesByCategory = categories.map((category) => ({
+    category,
+    checks: checks.filter((check) => checkMatchesCategory(check, category))
+  }));
+  const missing = matchesByCategory.filter((entry) => entry.checks.length === 0).map((entry) => entry.category);
+  const matchedChecks = dedupeChecks(matchesByCategory.flatMap((entry) => entry.checks));
+
+  if (missing.length > 0) {
     return {
       status: "UNPROVEN",
-      reason: `No matching ${category} check was observed.`,
+      reason: `No matching ${categoryLabel(missing)} check was observed.`,
       matchedChecks
     };
   }
@@ -94,7 +121,7 @@ export function assessCompletionClaim(
   if (failed) {
     return {
       status: "FAILED",
-      reason: `A matching ${category} check failed: ${failed.name}.`,
+      reason: `A matching CI check failed: ${failed.name}.`,
       matchedChecks
     };
   }
@@ -105,7 +132,7 @@ export function assessCompletionClaim(
   if (incomplete) {
     return {
       status: "UNPROVEN",
-      reason: `A matching ${category} check has not completed: ${incomplete.name}.`,
+      reason: `A matching CI check has not completed: ${incomplete.name}.`,
       matchedChecks
     };
   }
@@ -113,14 +140,14 @@ export function assessCompletionClaim(
   if (matchedChecks.every((check) => check.conclusion === "success")) {
     return {
       status: "PROVEN",
-      reason: `All observed ${category} checks completed successfully.`,
+      reason: `All observed ${categoryLabel(categories)} checks completed successfully.`,
       matchedChecks
     };
   }
 
   return {
     status: "UNPROVEN",
-    reason: `Matching ${category} checks did not provide a definitive success or failure result.`,
+    reason: `Matching ${categoryLabel(categories)} checks did not provide a definitive success or failure result.`,
     matchedChecks
   };
 }
