@@ -39,6 +39,7 @@ export interface CheckRunSummary {
   status: string;
   conclusion: string | null;
   htmlUrl?: string;
+  scope?: "check" | "step";
 }
 
 export interface RepositoryInstruction {

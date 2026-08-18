@@ -1,4 +1,5 @@
 import { buildClaimResults } from "./claim-evidence.js";
+import { assessGenericCiSuccess } from "./ci-evidence.js";
 import { extractCompletionClaims } from "./claims.js";
 import { GitHubClient } from "./github.js";
 import { discoverInstructionFiles } from "./instructions.js";
@@ -54,7 +55,11 @@ function evaluateRequirement(
           requirement,
           status: "FAILED",
           reason: `A matching CI check failed: ${failed.name}.`,
-          evidence: [{ kind: "ci", summary: `${failed.name}: ${failed.conclusion ?? failed.status}` }]
+          evidence: [{
+            kind: "ci",
+            summary: `${failed.name}: ${failed.conclusion ?? failed.status}`,
+            ...(failed.htmlUrl ? { url: failed.htmlUrl } : {})
+          }]
         };
       }
 
@@ -71,6 +76,20 @@ function evaluateRequirement(
           }))
         };
       }
+    }
+  } else {
+    const overallCi = assessGenericCiSuccess(requirement.text, checks);
+    if (overallCi) {
+      return {
+        requirement,
+        status: overallCi.status,
+        reason: overallCi.reason,
+        evidence: overallCi.matchedChecks.map((check) => ({
+          kind: "ci" as const,
+          summary: `${check.name}: ${check.conclusion ?? check.status}`,
+          ...(check.htmlUrl ? { url: check.htmlUrl } : {})
+        }))
+      };
     }
   }
 
@@ -111,12 +130,22 @@ export async function verifyPullRequest(input: {
     client.getCheckRuns(input.repository, pull.head.sha),
     client.getWorkflowStepChecks(input.repository, pull.head.sha)
   ]);
-  const checks: CheckRunSummary[] = [...checkRuns, ...workflowStepChecks].map((check) => ({
-    name: check.name,
-    status: check.status,
-    conclusion: check.conclusion,
-    ...(check.html_url ? { htmlUrl: check.html_url } : {})
-  }));
+  const checks: CheckRunSummary[] = [
+    ...checkRuns.map((check) => ({
+      name: check.name,
+      status: check.status,
+      conclusion: check.conclusion,
+      scope: "check" as const,
+      ...(check.html_url ? { htmlUrl: check.html_url } : {})
+    })),
+    ...workflowStepChecks.map((check) => ({
+      name: check.name,
+      status: check.status,
+      conclusion: check.conclusion,
+      scope: "step" as const,
+      ...(check.html_url ? { htmlUrl: check.html_url } : {})
+    }))
+  ];
 
   const requirements = extractRequirements(issue.body ?? "");
   const claims = extractCompletionClaims(pull.body ?? "");
