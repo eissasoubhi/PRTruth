@@ -5,6 +5,7 @@ const HEADING = /^#{1,6}\s+/;
 const VALIDATION_TERM = /\b(?:ci|tests?|test suite|lint(?:ing)?|type[ -]?check|typescript|build|compile|compilation|install(?:ation)?|dependencies)\b/i;
 const SUCCESS_TERM = /\b(?:pass(?:es|ed)?|succeed(?:s|ed)?|success(?:ful(?:ly)?)?|green|complete(?:s|d)?)\b/i;
 const FAILURE_TERM = /\b(?:fail(?:s|ed|ure)?|broken|red)\b/i;
+const NEGATED_SUCCESS_TERM = /\b(?:did\s+not|does\s+not|do\s+not|not|never|didn't|doesn't|don't)\s+(?:pass(?:es|ed)?|succeed(?:s|ed)?|complete(?:s|d)?)\b/i;
 
 function cleanItem(value: string): string {
   return value
@@ -15,13 +16,15 @@ function cleanItem(value: string): string {
 }
 
 function looksLikeValidationProse(value: string): boolean {
-  return VALIDATION_TERM.test(value) && SUCCESS_TERM.test(value);
+  return VALIDATION_TERM.test(value)
+    && SUCCESS_TERM.test(value)
+    && !NEGATED_SUCCESS_TERM.test(value);
 }
 
 function looksLikeFailureReport(value: string): boolean {
   return VALIDATION_TERM.test(value)
-    && FAILURE_TERM.test(value)
-    && !SUCCESS_TERM.test(value);
+    && (FAILURE_TERM.test(value) || NEGATED_SUCCESS_TERM.test(value))
+    && !looksLikeValidationProse(value);
 }
 
 export function extractCompletionClaims(body: string): CompletionClaim[] {
