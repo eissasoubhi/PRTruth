@@ -1,7 +1,8 @@
+import { buildClaimResults } from "./claim-evidence.js";
+import { extractCompletionClaims } from "./claims.js";
 import { GitHubClient } from "./github.js";
 import { discoverInstructionFiles } from "./instructions.js";
-import { extractCompletionClaims } from "./claims.js";
-import { buildClaimResults } from "./claim-evidence.js";
+import { resolveIssueNumber } from "./linked-issue.js";
 import { extractRequirements } from "./requirements.js";
 import type { CheckRunSummary, Requirement, RequirementResult, VerificationReport } from "./types.js";
 
@@ -92,14 +93,16 @@ function evaluateRequirement(
 
 export async function verifyPullRequest(input: {
   repository: string;
-  issueNumber: number;
+  issueNumber?: number;
   prNumber: number;
   token?: string;
 }): Promise<VerificationReport> {
   const client = new GitHubClient(input.token);
-  const [issue, pull, files, instructions] = await Promise.all([
-    client.getIssue(input.repository, input.issueNumber),
-    client.getPull(input.repository, input.prNumber),
+  const pull = await client.getPull(input.repository, input.prNumber);
+  const issueNumber = resolveIssueNumber(input.issueNumber, pull.body ?? "");
+
+  const [issue, files, instructions] = await Promise.all([
+    client.getIssue(input.repository, issueNumber),
     client.getPullFiles(input.repository, input.prNumber),
     discoverInstructionFiles(client, input.repository)
   ]);
@@ -129,7 +132,7 @@ export async function verifyPullRequest(input: {
 
   return {
     repository: input.repository,
-    issueNumber: input.issueNumber,
+    issueNumber,
     issueTitle: issue.title,
     prNumber: input.prNumber,
     prTitle: pull.title,

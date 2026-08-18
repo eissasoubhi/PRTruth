@@ -88,16 +88,19 @@ No GitHub token is required for a basic public-repository check:
 ```bash
 npx -y prtruth@latest verify \
   --repo eissasoubhi/ai-saas-factory \
-  --issue 1 \
   --pr 3 \
   --policy report-only
 ```
 
+PR #3 contains `Closes #1`, so PRTruth automatically verifies issue #1. You can always choose the issue explicitly with `--issue 1`.
+
 For a repository detected from your local Git remote:
 
 ```bash
-npx prtruth verify --issue 148 --pr 152 --policy report-only
+npx prtruth verify --pr 152 --policy report-only
 ```
+
+If the PR description contains one `Fixes #123`, `Closes #123`, or `Resolves #123` reference, PRTruth uses that issue automatically. If there is no closing reference or there are several, pass `--issue <number>` explicitly.
 
 `report-only` is convenient for exploration because it prints the evidence report without failing the command for an `UNPROVEN` result.
 
@@ -149,13 +152,37 @@ PRTruth uses a hidden marker so re-running the command updates its existing comm
 
 ## GitHub Actions
 
-PRTruth can also be used as a merge/review signal inside GitHub Actions. The repository includes an `action.yml` and configurable verification policies so teams can decide whether `FAILED`, `UNPROVEN`, or both should block a workflow.
+Start non-blocking, inspect the reports, then turn PRTruth into a gate when you are ready.
 
-The three policies are:
+Create `.github/workflows/prtruth.yml`:
 
-- `strict` — fail on `FAILED` or `UNPROVEN`;
-- `failures-only` — fail only on explicit `FAILED` evidence;
-- `report-only` — report results without using the verdict as a process gate.
+```yaml
+name: PRTruth
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+  checks: read
+  actions: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: eissasoubhi/PRTruth@v0.1.3
+        with:
+          pr: ${{ github.event.pull_request.number }}
+          policy: report-only
+```
+
+If the PR body contains exactly one closing issue reference, you do not need to configure the issue number. The Action also supports `strict`, `failures-only`, optional idempotent PR comments, and GitHub job summaries.
+
+See the [GitHub Actions quickstart](docs/github-actions.md) for merge-gate and comment examples.
 
 ## What PRTruth can and cannot prove
 

@@ -28,7 +28,11 @@ program
 program
   .command("verify")
   .description("Verify an existing pull request against a GitHub issue")
-  .requiredOption("--issue <number>", "GitHub issue number", positiveInteger)
+  .option(
+    "--issue <number>",
+    "GitHub issue number; inferred from a single Fixes/Closes/Resolves #123 reference when omitted",
+    positiveInteger
+  )
   .requiredOption("--pr <number>", "GitHub pull request number", positiveInteger)
   .option("--repo <owner/repo>", "GitHub repository; auto-detected by default")
   .option("--format <format>", "terminal, markdown, json, or badge", "terminal")
@@ -42,7 +46,7 @@ program
     "strict"
   )
   .action(async (options: {
-    issue: number;
+    issue?: number;
     pr: number;
     repo?: string;
     format: string;
@@ -55,8 +59,8 @@ program
       const repository = options.repo ?? detectRepository();
       const report = await verifyPullRequest({
         repository,
-        issueNumber: options.issue,
-        prNumber: options.pr
+        prNumber: options.pr,
+        ...(options.issue !== undefined ? { issueNumber: options.issue } : {})
       });
       const markdown = renderMarkdown(report);
 

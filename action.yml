@@ -8,8 +8,9 @@ branding:
 
 inputs:
   issue:
-    description: GitHub issue number containing the requirements.
-    required: true
+    description: GitHub issue number. Optional when the PR body closes exactly one issue with Fixes/Closes/Resolves #123.
+    required: false
+    default: ""
   pr:
     description: Pull request number to verify.
     required: true
@@ -18,11 +19,23 @@ inputs:
     required: false
     default: ${{ github.repository }}
   format:
-    description: Output format: terminal, markdown, or json.
+    description: Output format: terminal, markdown, json, or badge.
     required: false
     default: markdown
+  policy:
+    description: Verification policy: strict, failures-only, or report-only.
+    required: false
+    default: strict
+  comment:
+    description: Create or update the PRTruth evidence comment on the pull request.
+    required: false
+    default: "false"
+  github_summary:
+    description: Append the Markdown verification report to the GitHub Actions job summary.
+    required: false
+    default: "true"
   token:
-    description: GitHub token used to read issues, pull requests, files, and checks.
+    description: GitHub token used to read issues, pull requests, files, checks, and workflow evidence.
     required: false
     default: ${{ github.token }}
 
@@ -45,9 +58,32 @@ runs:
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.token }}
-      run: >-
-        node "$GITHUB_ACTION_PATH/dist/cli.js" verify
-        --repo "${{ inputs.repo }}"
-        --issue "${{ inputs.issue }}"
-        --pr "${{ inputs.pr }}"
-        --format "${{ inputs.format }}"
+        PRTRUTH_REPO: ${{ inputs.repo }}
+        PRTRUTH_ISSUE: ${{ inputs.issue }}
+        PRTRUTH_PR: ${{ inputs.pr }}
+        PRTRUTH_FORMAT: ${{ inputs.format }}
+        PRTRUTH_POLICY: ${{ inputs.policy }}
+        PRTRUTH_COMMENT: ${{ inputs.comment }}
+        PRTRUTH_GITHUB_SUMMARY: ${{ inputs.github_summary }}
+      run: |
+        args=(
+          verify
+          --repo "$PRTRUTH_REPO"
+          --pr "$PRTRUTH_PR"
+          --format "$PRTRUTH_FORMAT"
+          --policy "$PRTRUTH_POLICY"
+        )
+
+        if [[ -n "$PRTRUTH_ISSUE" ]]; then
+          args+=(--issue "$PRTRUTH_ISSUE")
+        fi
+
+        if [[ "$PRTRUTH_GITHUB_SUMMARY" == "true" ]]; then
+          args+=(--github-summary)
+        fi
+
+        if [[ "$PRTRUTH_COMMENT" == "true" ]]; then
+          args+=(--comment)
+        fi
+
+        node "$GITHUB_ACTION_PATH/dist/cli.js" "${args[@]}"
