@@ -177,10 +177,40 @@ jobs:
             );
           }
 
+          const fullCiRequirement = jobpilot.results.find((result) =>
+            result.requirement?.text === 'The full GitHub-hosted CI completes successfully.'
+          );
+          if (!fullCiRequirement) {
+            throw new Error('JobPilot: expected the full-CI acceptance criterion');
+          }
+          if (fullCiRequirement.status !== 'FAILED') {
+            throw new Error(
+              `JobPilot: observed Backend tests failure must make full CI FAILED, got ${fullCiRequirement.status}`
+            );
+          }
+          if (!fullCiRequirement.evidence?.some((item) =>
+            item.kind === 'ci' && item.summary.includes('Backend tests: failure')
+          )) {
+            throw new Error('JobPilot: expected Backend tests failure in full-CI evidence');
+          }
+
+          const fullCiClaim = (jobpilot.claimResults ?? []).find((result) =>
+            result.claim?.text.startsWith('Full GitHub-hosted CI must pass')
+          );
+          if (!fullCiClaim || fullCiClaim.status !== 'FAILED') {
+            throw new Error(
+              `JobPilot: full-CI completion claim must be FAILED, got ${fullCiClaim?.status ?? 'missing'}`
+            );
+          }
+          if (jobpilot.verdict !== 'FAILED') {
+            throw new Error(`JobPilot: overall verdict must be FAILED, got ${jobpilot.verdict}`);
+          }
+
           console.log(`V0.2 inferred issue: #${v02.issueNumber}`);
           console.log(`V0.2 verdict: ${v02.verdict}`);
           console.log(`V0.3 verdict: ${v03.verdict}`);
           console.log(`JobPilot inferred issue: #${jobpilot.issueNumber}`);
+          console.log(`JobPilot full-CI requirement: ${fullCiRequirement.status}`);
           console.log(`JobPilot verdict: ${jobpilot.verdict}`);
           NODE
 
