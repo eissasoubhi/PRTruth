@@ -165,6 +165,48 @@ jobs:
             throw new Error('V0.3: generic green CI must not be cited as proof of specific test coverage');
           }
 
+          const concurrencyRequirement = jobpilot.results.find((result) =>
+            result.requirement?.text.startsWith('Composer HTTP download concurrency is reduced')
+          );
+          if (!concurrencyRequirement || concurrencyRequirement.status !== 'UNPROVEN') {
+            throw new Error(
+              `JobPilot: concurrency requirement must stay UNPROVEN, got ${concurrencyRequirement?.status ?? 'missing'}`
+            );
+          }
+          if (!concurrencyRequirement.evidence?.some((item) =>
+            item.kind === 'diff' && item.summary.includes('COMPOSER_MAX_PARALLEL_HTTP: 1')
+          )) {
+            throw new Error('JobPilot: expected Composer parallel HTTP patch candidate');
+          }
+
+          const retryRequirement = jobpilot.results.find((result) =>
+            result.requirement?.text.startsWith('Backend dependency installation retries up to three times')
+          );
+          if (!retryRequirement || retryRequirement.status !== 'UNPROVEN') {
+            throw new Error(
+              `JobPilot: retry requirement must stay UNPROVEN, got ${retryRequirement?.status ?? 'missing'}`
+            );
+          }
+          if (!retryRequirement.evidence?.some((item) =>
+            item.kind === 'diff' && item.summary.includes('attempt ${attempt}/5')
+          )) {
+            throw new Error('JobPilot: expected patch candidate to expose the implementation retry count /5');
+          }
+
+          const cacheRequirement = jobpilot.results.find((result) =>
+            result.requirement?.text.startsWith('Successful downloads are reused between attempts')
+          );
+          if (!cacheRequirement || cacheRequirement.status !== 'UNPROVEN') {
+            throw new Error(
+              `JobPilot: cache requirement must stay UNPROVEN, got ${cacheRequirement?.status ?? 'missing'}`
+            );
+          }
+          if (!cacheRequirement.evidence?.some((item) =>
+            item.kind === 'diff' && item.summary.includes('same cache')
+          )) {
+            throw new Error('JobPilot: expected cache-reuse patch candidate');
+          }
+
           const gateRequirement = jobpilot.results.find((result) =>
             result.requirement?.text.includes('validation gate is removed or weakened')
           );
@@ -210,6 +252,7 @@ jobs:
           console.log(`V0.2 verdict: ${v02.verdict}`);
           console.log(`V0.3 verdict: ${v03.verdict}`);
           console.log(`JobPilot inferred issue: #${jobpilot.issueNumber}`);
+          console.log(`JobPilot retry candidate: ${retryRequirement.evidence[0]?.summary ?? 'missing'}`);
           console.log(`JobPilot full-CI requirement: ${fullCiRequirement.status}`);
           console.log(`JobPilot verdict: ${jobpilot.verdict}`);
           NODE
