@@ -1,7 +1,7 @@
 {
   "name": "prtruth",
   "version": "0.1.0",
-  "description": "Evidence-based verification for AI-generated pull requests.",
+  "description": "Verify GitHub pull requests against issue acceptance criteria using deterministic evidence from CI, diffs, and repository artifacts.",
   "type": "module",
   "bin": {
     "prtruth": "dist/cli.js"
@@ -39,8 +39,13 @@
     "ai",
     "code-review",
     "github",
+    "github-actions",
     "pull-request",
+    "pull-request-verification",
+    "acceptance-criteria",
+    "ci",
     "verification",
+    "developer-tools",
     "coding-agents"
   ]
 }
