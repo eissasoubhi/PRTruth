@@ -21,7 +21,12 @@ function tokenize(text: string): string[] {
   )];
 }
 
+function hasSuccessLanguage(text: string): boolean {
+  return /\b(?:pass(?:es|ed)?|succeed(?:s|ed)?|success(?:ful(?:ly)?)?|green|complete(?:s|d)?)\b/i.test(text);
+}
+
 function checkCategory(text: string): string | null {
+  if (!hasSuccessLanguage(text)) return null;
   if (/\btests?\b|\btest suite\b/i.test(text)) return "test";
   if (/\blint\b|eslint|phpstan|static analysis/i.test(text)) return "lint";
   if (/type[ -]?check|typescript/i.test(text)) return "type";
@@ -99,8 +104,11 @@ export async function verifyPullRequest(input: {
     discoverInstructionFiles(client, input.repository)
   ]);
 
-  const checkRuns = await client.getCheckRuns(input.repository, pull.head.sha);
-  const checks: CheckRunSummary[] = checkRuns.map((check) => ({
+  const [checkRuns, workflowStepChecks] = await Promise.all([
+    client.getCheckRuns(input.repository, pull.head.sha),
+    client.getWorkflowStepChecks(input.repository, pull.head.sha)
+  ]);
+  const checks: CheckRunSummary[] = [...checkRuns, ...workflowStepChecks].map((check) => ({
     name: check.name,
     status: check.status,
     conclusion: check.conclusion,
