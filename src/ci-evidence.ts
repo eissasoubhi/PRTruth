@@ -15,7 +15,7 @@ export interface CiEvidenceAssessment {
 }
 
 function hasSuccessLanguage(text: string): boolean {
-  return /\b(?:pass(?:es|ed)?|succeed(?:s|ed)?|success(?:ful(?:ly)?)?|green|complete(?:s|d)?)\b/i.test(text);
+  return /\b(?:pass(?:es|ed)?|succeed(?:s|ed)?|success(?:ful(?:ly)?)?|green)\b/i.test(text);
 }
 
 export function isGenericCiSuccessStatement(text: string): boolean {
