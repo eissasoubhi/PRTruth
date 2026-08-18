@@ -10,16 +10,28 @@ describe("GitHub Action metadata", () => {
     expect(metadata).toContain("node-version: 22.12.0");
   });
 
-  it("exposes issue, PR, repository, format, and token inputs", () => {
-    for (const input of ["issue:", "pr:", "repo:", "format:", "token:"]) {
+  it("exposes the inputs needed for a practical review gate", () => {
+    for (const input of [
+      "issue:",
+      "pr:",
+      "repo:",
+      "format:",
+      "policy:",
+      "comment:",
+      "github_summary:",
+      "token:"
+    ]) {
       expect(metadata).toContain(input);
     }
   });
 
-  it("runs the PRTruth verify command without depending on unreleased CLI flags", () => {
-    expect(metadata).toContain("dist/cli.js\" verify");
+  it("passes policy and optional reporting controls to the released CLI", () => {
+    expect(metadata).toContain('dist/cli.js" "${args[@]}"');
     expect(metadata).toContain('--issue "${{ inputs.issue }}"');
     expect(metadata).toContain('--pr "${{ inputs.pr }}"');
+    expect(metadata).toContain('--policy "${{ inputs.policy }}"');
+    expect(metadata).toContain("args+=(--github-summary)");
+    expect(metadata).toContain("args+=(--comment)");
     expect(metadata).not.toContain("--output");
   });
 });
