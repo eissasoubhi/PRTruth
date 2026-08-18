@@ -84,4 +84,8 @@ runs:
           args+=(--comment)
         fi
 
-        npx -y "prtruth@${PRTRUTH_VERSION}" "${args[@]}"
+        TEMP_DIR="$(mktemp -d)"
+        (
+          cd "$TEMP_DIR"
+          npx -y "prtruth@${PRTRUTH_VERSION}" "${args[@]}"
+        )
