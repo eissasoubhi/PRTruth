@@ -3,9 +3,9 @@ import type { CompletionClaim } from "./types.js";
 const CLAIM_SECTION = /^(?:#{1,6}\s+)?(?:completion claims?|claims?|validation|what changed|changes|implemented|included|done)\s*:??\s*$/i;
 const HEADING = /^#{1,6}\s+/;
 const VALIDATION_TERM = /\b(?:ci|tests?|test suite|lint(?:ing)?|type[ -]?check|typescript|build|compile|compilation|install(?:ation)?|dependencies)\b/i;
-const SUCCESS_TERM = /\b(?:pass(?:es|ed)?|succeed(?:s|ed)?|success(?:ful(?:ly)?)?|green|complete(?:s|d)?)\b/i;
-const FAILURE_TERM = /\b(?:fail(?:s|ed|ure)?|broken|red)\b/i;
-const NEGATED_SUCCESS_TERM = /\b(?:did\s+not|does\s+not|do\s+not|not|never|didn't|doesn't|don't)\s+(?:pass(?:es|ed)?|succeed(?:s|ed)?|complete(?:s|d)?)\b/i;
+const SUCCESS_TERM = /\b(?:pass(?:es|ed|ing)?|succeed(?:s|ed|ing)?|success(?:ful(?:ly)?)?|green|complete(?:s|d|ing)?)\b/i;
+const FAILURE_TERM = /\b(?:fail(?:s|ed|ing|ure)?|broken|red)\b/i;
+const NEGATED_SUCCESS_TERM = /\b(?:(?:did|does|do|has|have|is|are|was|were|can)\s+not|never|didn't|doesn't|don't|hasn't|haven't|isn't|aren't|wasn't|weren't|cannot|can't)\s+(?:pass(?:es|ed|ing)?|succeed(?:s|ed|ing)?|complete(?:s|d|ing)?)\b/i;
 
 function cleanItem(value: string): string {
   return value
