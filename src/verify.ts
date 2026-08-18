@@ -1,6 +1,7 @@
 import { buildClaimResults } from "./claim-evidence.js";
 import { assessGenericCiSuccess } from "./ci-evidence.js";
 import { extractCompletionClaims } from "./claims.js";
+import { findPatchCandidateEvidence, type PatchFile } from "./diff-evidence.js";
 import { GitHubClient } from "./github.js";
 import { discoverInstructionFiles } from "./instructions.js";
 import { resolveIssueNumber } from "./linked-issue.js";
@@ -38,7 +39,7 @@ function checkCategory(text: string): string | null {
 
 function evaluateRequirement(
   requirement: Requirement,
-  changedFiles: string[],
+  files: PatchFile[],
   checks: CheckRunSummary[]
 ): RequirementResult {
   const category = checkCategory(requirement.text);
@@ -93,6 +94,17 @@ function evaluateRequirement(
     }
   }
 
+  const patchCandidates = findPatchCandidateEvidence(requirement.text, files);
+  if (patchCandidates.length > 0) {
+    return {
+      requirement,
+      status: "UNPROVEN",
+      reason: "Patch lines are relevant, but textual diff matches alone do not prove the requirement.",
+      evidence: patchCandidates
+    };
+  }
+
+  const changedFiles = files.map((file) => file.filename);
   const terms = tokenize(requirement.text);
   const candidates = changedFiles.filter((file) => {
     const lower = file.toLowerCase();
@@ -151,7 +163,7 @@ export async function verifyPullRequest(input: {
   const claims = extractCompletionClaims(pull.body ?? "");
   const changedFiles = files.map((file) => file.filename);
   const claimResults = buildClaimResults(claims, checks, changedFiles);
-  const results = requirements.map((requirement) => evaluateRequirement(requirement, changedFiles, checks));
+  const results = requirements.map((requirement) => evaluateRequirement(requirement, files, checks));
 
   const verdict = results.some((result) => result.status === "FAILED")
     ? "FAILED"
