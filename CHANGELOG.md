@@ -2,6 +2,21 @@
 
 All notable changes to PRTruth are documented in this file.
 
+## 0.1.3
+
+GitHub Actions adoption release.
+
+### Added
+
+- Pull requests can infer their verification issue from a single GitHub closing reference such as `Fixes #123`, `Closes #123`, or `Resolves #123` when `--issue` is omitted.
+- The GitHub Action exposes verification policy, optional PR comments, and GitHub Actions job summaries.
+- A copy-paste GitHub Actions guide documents minimal read permissions, non-blocking evaluation, strict merge gates, comments, and explicit issue selection.
+
+### Safety
+
+- Automatic issue inference refuses to guess when a PR closes no issue or several issues; callers must pass `--issue` explicitly in those cases.
+- The evidence model remains deterministic-first. Issue inference only chooses the verification target and does not increase proof strength.
+
 ## 0.1.2
 
 Real-project verification hardening release.
