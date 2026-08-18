@@ -17,10 +17,13 @@ describe("extractCompletionClaims", () => {
     expect(claims.every((claim) => claim.source === "checked-checklist")).toBe(true);
   });
 
-  it("extracts bullets from explicit completion and validation sections only", () => {
+  it("extracts bullets from explicit completion, included, and validation sections", () => {
     const claims = extractCompletionClaims(`
 ## Summary
 - This is context, not a completion claim
+
+## Included
+- Added workspace onboarding
 
 ## What changed
 - Added CSV export
@@ -35,10 +38,23 @@ describe("extractCompletionClaims", () => {
 `);
 
     expect(claims.map((claim) => claim.text)).toEqual([
+      "Added workspace onboarding",
       "Added CSV export",
       "Added admin authorization",
       "Unit tests pass",
       "Typecheck passes"
+    ]);
+  });
+
+  it("captures high-confidence validation prose used by real project pull requests", () => {
+    const claims = extractCompletionClaims(`
+## Validation
+
+Self-hosted Linux ARM64 CI passes install, lint, typecheck, tests and production build.
+`);
+
+    expect(claims.map((claim) => claim.text)).toEqual([
+      "Self-hosted Linux ARM64 CI passes install, lint, typecheck, tests and production build."
     ]);
   });
 
