@@ -9,7 +9,7 @@ A verification starts with two GitHub objects:
 1. an **issue**, which describes the requested work and acceptance criteria;
 2. a **pull request**, which contains the proposed implementation and completion claims.
 
-PRTruth then gathers supporting artifacts such as changed files, GitHub checks/Actions evidence, and repository instruction files.
+PRTruth then gathers supporting artifacts such as changed files, pull-request patch lines, GitHub checks/Actions evidence, and repository instruction files.
 
 ## Verification pipeline
 
@@ -24,7 +24,7 @@ Extract completion claims
 
 PR head + repository
   ↓
-Changed files + CI evidence + instructions
+Changed files + patch lines + CI evidence + instructions
 
 All evidence
   ↓
@@ -40,7 +40,7 @@ A language model can read a diff and make a useful review suggestion, but a plau
 PRTruth therefore starts from deterministic evidence:
 
 - a GitHub check either completed successfully, failed, or did not complete;
-- a file either changed or did not change;
+- a file or patch line either changed or did not change;
 - an API/schema compatibility check either produced evidence or did not;
 - a signed receipt either validates or it does not.
 
@@ -86,6 +86,23 @@ Result: UNPROVEN
 
 A changed controller and green CI are relevant, but they do not necessarily prove that non-admin users are denied access. A stronger adapter or explicit authorization test would be needed.
 
+## Candidate diff evidence is not proof
+
+When PRTruth cannot deterministically prove a requirement, it can still point the reviewer at added patch lines whose terms are relevant to the requirement.
+
+For example:
+
+```text
+Requirement: Backend dependency installation retries up to three times
+Result: UNPROVEN
+Evidence candidate:
+  .github/workflows/ci.yml:64 — echo "... attempt ${attempt}/5; retrying ..."
+```
+
+The patch line is useful because it tells a reviewer where to look and can even expose a mismatch between the requirement and implementation. But textual similarity alone does not establish program behavior, so a patch candidate never upgrades an item to `PROVEN`.
+
+PRTruth deliberately requires at least multiple meaningful term matches before showing a patch line, which reduces noisy one-word coincidences while keeping this evidence as a navigation aid rather than a correctness verdict.
+
 ## Does PRTruth use AI?
 
 The core verifier in the current release does **not** send repository code to an LLM for a semantic correctness verdict.
@@ -118,7 +135,7 @@ It is vendor-neutral: the same evidence model can be used for Codex, Claude Code
 
 PRTruth intentionally leaves some requirements `UNPROVEN` when it lacks a strong adapter. Current limitations include:
 
-- arbitrary business logic cannot be proven merely from a filename match;
+- arbitrary business logic cannot be proven merely from a filename or patch-text match;
 - green CI does not prove that every edge case is covered;
 - broad statements such as “no regressions” need more than normal CI;
 - semantic code understanding is not yet used as a source of truth;
