@@ -19,11 +19,11 @@ inputs:
     required: false
     default: ${{ github.repository }}
   format:
-    description: Output format: terminal, markdown, json, or badge.
+    description: "Output format: terminal, markdown, json, or badge."
     required: false
     default: markdown
   policy:
-    description: Verification policy: strict, failures-only, or report-only.
+    description: "Verification policy: strict, failures-only, or report-only."
     required: false
     default: strict
   comment:
