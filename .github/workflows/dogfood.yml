@@ -120,9 +120,30 @@ jobs:
             throw new Error(`V0.2: expected composite CI validation to be PROVEN, got ${validationClaim.status}`);
           }
 
+          const specificCoverageClaim = (v03.claimResults ?? []).find((result) =>
+            result.claim?.text?.startsWith('tests for signatures, replay tolerance')
+          );
+          if (!specificCoverageClaim) {
+            throw new Error('V0.3: expected the real specific test-coverage claim');
+          }
+          if (specificCoverageClaim.status !== 'UNPROVEN') {
+            throw new Error(
+              `V0.3: specific test coverage must stay UNPROVEN, got ${specificCoverageClaim.status}`
+            );
+          }
+          if (!specificCoverageClaim.evidence?.some((item) =>
+            item.kind === 'diff' && item.summary.includes('stripe-webhook.test.ts')
+          )) {
+            throw new Error('V0.3: expected the relevant stripe webhook test file as candidate evidence');
+          }
+          if (specificCoverageClaim.evidence?.some((item) => item.kind === 'ci')) {
+            throw new Error('V0.3: generic green CI must not be cited as proof of specific test coverage');
+          }
+
           console.log(`V0.2 verdict: ${v02.verdict}`);
           console.log(`V0.2 CI validation claim: ${validationClaim.status}`);
           console.log(`V0.3 verdict: ${v03.verdict}`);
+          console.log(`V0.3 specific test coverage: ${specificCoverageClaim.status}`);
           NODE
 
       - name: Upload dogfood reports

@@ -28,6 +28,8 @@ const FILE_MATCH_STOP_WORDS = new Set([
 ]);
 
 const GENERIC_UNPROVEN_REASON = "No deterministic evidence rule currently matches this completion claim.";
+const TEST_COVERAGE_UNPROVEN_REASON =
+  "A specific test-coverage claim requires evidence that the named behavior is exercised, not only a successful test run.";
 
 function claimCategories(claim: string): CheckCategory[] {
   const categories: CheckCategory[] = [];
@@ -65,6 +67,11 @@ function isNoBreakingChangesClaim(claim: string): boolean {
 
 function isNoRegressionClaim(claim: string): boolean {
   return /\bno\s+regressions?\b/i.test(claim);
+}
+
+function isSpecificTestCoverageClaim(claim: string): boolean {
+  return /\btests?\s+(?:for|cover(?:s|ed|ing)?|verify|verifies|validat(?:e|es|ed|ing))\b/i.test(claim)
+    || /\b(?:test\s+coverage|coverage\s+(?:for|of)|covered\s+by\s+tests?)\b/i.test(claim);
 }
 
 function dedupeChecks(checks: CheckRunSummary[]): CheckRunSummary[] {
@@ -119,6 +126,14 @@ export function assessCompletionClaim(
     return {
       status: "UNPROVEN",
       reason: "A no-regressions claim is broader than the deterministic evidence currently available.",
+      matchedChecks: []
+    };
+  }
+
+  if (isSpecificTestCoverageClaim(claim)) {
+    return {
+      status: "UNPROVEN",
+      reason: TEST_COVERAGE_UNPROVEN_REASON,
       matchedChecks: []
     };
   }
@@ -189,16 +204,19 @@ export function buildClaimResults(
 ): ClaimResult[] {
   return claims.map((claim) => {
     const assessment = assessCompletionClaim(claim.text, checks);
-    const candidateFiles = assessment.reason === GENERIC_UNPROVEN_REASON
+    const shouldShowCandidateFiles =
+      assessment.reason === GENERIC_UNPROVEN_REASON || assessment.reason === TEST_COVERAGE_UNPROVEN_REASON;
+    const candidateFiles = shouldShowCandidateFiles
       ? relevantChangedFiles(claim.text, changedFiles)
       : [];
 
     return {
       claim,
       status: assessment.status,
-      reason: candidateFiles.length > 0
-        ? "Changed files are relevant, but no deterministic evidence rule currently proves this completion claim."
-        : assessment.reason,
+      reason:
+        assessment.reason === GENERIC_UNPROVEN_REASON && candidateFiles.length > 0
+          ? "Changed files are relevant, but no deterministic evidence rule currently proves this completion claim."
+          : assessment.reason,
       evidence: [
         ...assessment.matchedChecks.map((check) => ({
           kind: "ci" as const,
