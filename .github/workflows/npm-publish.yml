@@ -3,9 +3,6 @@ name: Publish npm package
 on:
   release:
     types: [published]
-  push:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       tag:
@@ -26,12 +23,6 @@ jobs:
       NPM_CONFIG_PRODUCTION: "false"
 
     steps:
-      - name: Checkout source for version resolution
-        if: github.event_name == 'push'
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
       - name: Resolve release tag
         id: release
         shell: bash
@@ -40,11 +31,8 @@ jobs:
         run: |
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             TAG="${{ inputs.tag }}"
-          elif [[ "${GITHUB_EVENT_NAME}" == "release" ]]; then
-            TAG="${RELEASE_TAG}"
           else
-            PACKAGE_VERSION="$(node -p "require('./package.json').version")"
-            TAG="v${PACKAGE_VERSION}"
+            TAG="${RELEASE_TAG}"
           fi
           if [[ -z "${TAG}" ]]; then
             echo "Unable to resolve a release tag."
