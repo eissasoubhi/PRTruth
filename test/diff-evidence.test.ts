@@ -65,6 +65,38 @@ describe("patch candidate evidence", () => {
     expect(evidence).toEqual([]);
   });
 
+  it("uses the total from 'attempt current of total' instead of the current counter", () => {
+    const patch = "@@ -1,1 +1,1 @@\n+echo \"Install failed on attempt ${attempt} of 5; retrying\"";
+    const evidence = findQuantitativePatchMismatchEvidence(
+      "Dependency install retries up to five attempts.",
+      [{ filename: ".github/workflows/ci.yml", patch }]
+    );
+
+    expect(evidence).toEqual([]);
+  });
+
+  it("flags the total from 'attempt current of total' when it differs", () => {
+    const patch = "@@ -1,1 +1,1 @@\n+echo \"Install failed on attempt ${attempt} of 5; retrying\"";
+    const evidence = findQuantitativePatchMismatchEvidence(
+      "Dependency install retries up to three attempts.",
+      [{ filename: ".github/workflows/ci.yml", patch }]
+    );
+
+    expect(evidence).toHaveLength(1);
+    expect(evidence[0]?.summary).toContain("requirement quantity 3");
+    expect(evidence[0]?.summary).toContain("patch retry/attempt quantity 5");
+  });
+
+  it("does not treat a bare current attempt counter as the configured retry total", () => {
+    const patch = "@@ -1,1 +1,1 @@\n+echo \"Install failed on attempt 1; retrying\"";
+    const evidence = findQuantitativePatchMismatchEvidence(
+      "Dependency install retries up to three attempts.",
+      [{ filename: ".github/workflows/ci.yml", patch }]
+    );
+
+    expect(evidence).toEqual([]);
+  });
+
   it("ignores unrelated numeric changes", () => {
     const evidence = findQuantitativePatchMismatchEvidence(
       "Backend dependency installation retries up to three times within the same runner.",
