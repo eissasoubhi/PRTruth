@@ -60,7 +60,7 @@ function checkMatchesCategory(check: CheckRunSummary, category: CheckCategory): 
 }
 
 function isNoBreakingChangesClaim(claim: string): boolean {
-  return /\bno\s+breaking\s+changes?\b|\bbackward[- ]compatible\b/i.test(claim);
+  return /\bno\s+breaking(?:\s+(?:api|schema|contract|public[- ]api))?\s+changes?\b|\bbackward[- ]compatible\b/i.test(claim);
 }
 
 function isNoRegressionClaim(claim: string): boolean {
