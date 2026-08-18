@@ -2,6 +2,30 @@
 
 All notable changes to PRTruth are documented in this file.
 
+## 0.1.7
+
+Evidence clarity, discoverability, and workflow hardening release.
+
+### Improved
+
+- Requirements with explicit retry/attempt quantities can surface a `Possible quantitative mismatch` when a semantically relevant added patch line exposes a different quantity.
+- Quantitative patch mismatches remain `UNPROVEN` reviewer-navigation evidence rather than being promoted to `FAILED` when retry-versus-attempt semantics may still be ambiguous.
+- Retry total parsing now prefers explicit total forms such as `attempt <current> of <total>` and `<current>/<total>`, and no longer treats a bare current counter such as `attempt 1` as the configured retry total.
+- README now explains common use cases for AI pull request verification, acceptance-criteria verification, GitHub Actions merge gates, CI claim fact-checking, and audit receipts.
+- Added a concise PRTruth-vs-CI-vs-AI-code-review comparison and FAQ to make the product boundary easier to understand and improve relevant search discoverability.
+
+### Security
+
+- Read-only CI and local Action-smoke checkouts no longer persist the GitHub checkout credential in repository Git configuration.
+- Release and npm-publish checkouts also disable persisted checkout credentials while retaining their explicit workflow permissions.
+- Regression tests enforce the expected checkout credential behavior and permission boundaries.
+
+### Verification
+
+- Quantitative mismatch behavior is covered by regression tests for mismatching totals, matching totals, `current of total` forms, bare current counters, and unrelated numeric changes.
+- The GitHub Action smoke remained green after checkout credential hardening and directly exercised public `prtruth@0.1.6` from npm.
+- The `ai` npm discovery keyword remains unchanged.
+
 ## 0.1.6
 
 GitHub Action corrective release.
