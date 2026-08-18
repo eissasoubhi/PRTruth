@@ -64,6 +64,36 @@ describe("assessCompletionClaim", () => {
     ).toBe("PROVEN");
   });
 
+  it("proves a composite validation claim when all observed workflow steps succeed", () => {
+    const assessment = assessCompletionClaim(
+      "CI passes install, lint, typecheck, tests and production build",
+      [
+        check("quality / Run pnpm install --frozen-lockfile", "success"),
+        check("quality / Run pnpm lint", "success"),
+        check("quality / Run pnpm typecheck", "success"),
+        check("quality / Run pnpm test", "success"),
+        check("quality / Run pnpm build", "success")
+      ]
+    );
+
+    expect(assessment.status).toBe("PROVEN");
+    expect(assessment.matchedChecks).toHaveLength(5);
+  });
+
+  it("keeps a composite validation claim unproven when one stage has no evidence", () => {
+    const assessment = assessCompletionClaim(
+      "CI passes lint, typecheck, tests and build",
+      [
+        check("quality / Run pnpm lint", "success"),
+        check("quality / Run pnpm typecheck", "success"),
+        check("quality / Run pnpm test", "success")
+      ]
+    );
+
+    expect(assessment.status).toBe("UNPROVEN");
+    expect(assessment.reason).toContain("build");
+  });
+
   it("keeps unsupported broad claims unproven", () => {
     const assessment = assessCompletionClaim("No regressions", [
       check("unit tests", "success"),
