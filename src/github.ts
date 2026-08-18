@@ -32,6 +32,31 @@ interface GitHubCheckRunsResponse {
   check_runs: GitHubCheckRunResponse[];
 }
 
+interface GitHubWorkflowRunResponse {
+  id: number;
+  workflow_id: number;
+}
+
+interface GitHubWorkflowRunsResponse {
+  workflow_runs: GitHubWorkflowRunResponse[];
+}
+
+interface GitHubWorkflowJobStepResponse {
+  name: string;
+  status: string;
+  conclusion: string | null;
+}
+
+interface GitHubWorkflowJobResponse {
+  name: string;
+  html_url?: string;
+  steps?: GitHubWorkflowJobStepResponse[] | null;
+}
+
+interface GitHubWorkflowJobsResponse {
+  jobs: GitHubWorkflowJobResponse[];
+}
+
 export interface GitHubContentResponse {
   name: string;
   path: string;
@@ -147,9 +172,54 @@ export class GitHubClient {
     return response.check_runs;
   }
 
+  async getWorkflowStepChecks(repository: string, sha: string): Promise<GitHubCheckRunResponse[]> {
+    try {
+      const response = await this.request<GitHubWorkflowRunsResponse>(
+        `/repos/${repository}/actions/runs?head_sha=${encodeURIComponent(sha)}&per_page=100`
+      );
+
+      const latestByWorkflow = new Map<number, GitHubWorkflowRunResponse>();
+      for (const run of response.workflow_runs) {
+        const current = latestByWorkflow.get(run.workflow_id);
+        if (!current || run.id > current.id) {
+          latestByWorkflow.set(run.workflow_id, run);
+        }
+      }
+
+      const jobsByRun = await Promise.all(
+        [...latestByWorkflow.values()].map((run) =>
+          this.request<GitHubWorkflowJobsResponse>(
+            `/repos/${repository}/actions/runs/${run.id}/jobs?per_page=100`
+          )
+        )
+      );
+
+      return jobsByRun.flatMap((response) =>
+        response.jobs.flatMap((job) =>
+          (job.steps ?? []).map((step) => ({
+            name: `${job.name} / ${step.name}`,
+            status: step.status,
+            conclusion: step.conclusion,
+            ...(job.html_url ? { html_url: job.html_url } : {})
+          }))
+        )
+      );
+    } catch (error) {
+      if (error instanceof GitHubApiError && (error.status === 403 || error.status === 404)) {
+        return [];
+      }
+      throw error;
+    }
+  }
+
   async getContent(repository: string, path: string): Promise<GitHubContentResponse | null> {
     return this.requestOptional(`/repos/${repository}/contents/${path}`);
   }
 }
 
-export type { GitHubIssueResponse, GitHubPullResponse, GitHubPullFileResponse, GitHubCheckRunResponse };
+export type {
+  GitHubIssueResponse,
+  GitHubPullResponse,
+  GitHubPullFileResponse,
+  GitHubCheckRunResponse
+};
