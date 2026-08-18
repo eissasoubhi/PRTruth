@@ -21,6 +21,14 @@ const FAILED_CONCLUSIONS = new Set([
   "startup_failure"
 ]);
 
+const FILE_MATCH_STOP_WORDS = new Set([
+  "the", "and", "for", "with", "that", "this", "from", "into", "when", "then", "must", "should",
+  "have", "has", "are", "was", "were", "will", "not", "all", "any", "can", "its", "their", "our",
+  "added", "add", "fix", "fixed", "support", "supports", "first", "flow", "ux"
+]);
+
+const GENERIC_UNPROVEN_REASON = "No deterministic evidence rule currently matches this completion claim.";
+
 function claimCategories(claim: string): CheckCategory[] {
   const categories: CheckCategory[] = [];
 
@@ -52,7 +60,7 @@ function checkMatchesCategory(check: CheckRunSummary, category: CheckCategory): 
 }
 
 function isNoBreakingChangesClaim(claim: string): boolean {
-  return /\bno\s+breaking\s+changes?\b|\bbackward[- ]compatible\b/i.test(claim);
+  return /\bno\s+breaking(?:\s+(?:api|schema|contract|public[- ]api))?\s+changes?\b|\bbackward[- ]compatible\b/i.test(claim);
 }
 
 function isNoRegressionClaim(claim: string): boolean {
@@ -71,6 +79,28 @@ function dedupeChecks(checks: CheckRunSummary[]): CheckRunSummary[] {
 
 function categoryLabel(categories: CheckCategory[]): string {
   return categories.join(", ");
+}
+
+function claimTerms(text: string): string[] {
+  return [...new Set(
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9_./-]+/gi, " ")
+      .split(/\s+/)
+      .filter((term) => term.length >= 3 && !FILE_MATCH_STOP_WORDS.has(term))
+  )];
+}
+
+function relevantChangedFiles(claim: string, changedFiles: string[]): string[] {
+  const terms = claimTerms(claim);
+  if (terms.length === 0) return [];
+
+  return changedFiles
+    .filter((file) => {
+      const lower = file.toLowerCase();
+      return terms.some((term) => lower.includes(term));
+    })
+    .slice(0, 5);
 }
 
 export function assessCompletionClaim(
@@ -97,7 +127,7 @@ export function assessCompletionClaim(
   if (categories.length === 0) {
     return {
       status: "UNPROVEN",
-      reason: "No deterministic evidence rule currently matches this completion claim.",
+      reason: GENERIC_UNPROVEN_REASON,
       matchedChecks: []
     };
   }
@@ -154,19 +184,32 @@ export function assessCompletionClaim(
 
 export function buildClaimResults(
   claims: CompletionClaim[],
-  checks: CheckRunSummary[]
+  checks: CheckRunSummary[],
+  changedFiles: string[] = []
 ): ClaimResult[] {
   return claims.map((claim) => {
     const assessment = assessCompletionClaim(claim.text, checks);
+    const candidateFiles = assessment.reason === GENERIC_UNPROVEN_REASON
+      ? relevantChangedFiles(claim.text, changedFiles)
+      : [];
+
     return {
       claim,
       status: assessment.status,
-      reason: assessment.reason,
-      evidence: assessment.matchedChecks.map((check) => ({
-        kind: "ci" as const,
-        summary: `${check.name}: ${check.conclusion ?? check.status}`,
-        ...(check.htmlUrl ? { url: check.htmlUrl } : {})
-      }))
+      reason: candidateFiles.length > 0
+        ? "Changed files are relevant, but no deterministic evidence rule currently proves this completion claim."
+        : assessment.reason,
+      evidence: [
+        ...assessment.matchedChecks.map((check) => ({
+          kind: "ci" as const,
+          summary: `${check.name}: ${check.conclusion ?? check.status}`,
+          ...(check.htmlUrl ? { url: check.htmlUrl } : {})
+        })),
+        ...candidateFiles.map((file) => ({
+          kind: "diff" as const,
+          summary: `Changed file: ${file}`
+        }))
+      ]
     };
   });
 }

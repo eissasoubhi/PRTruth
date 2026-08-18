@@ -117,8 +117,8 @@ export async function verifyPullRequest(input: {
 
   const requirements = extractRequirements(issue.body ?? "");
   const claims = extractCompletionClaims(pull.body ?? "");
-  const claimResults = buildClaimResults(claims, checks);
   const changedFiles = files.map((file) => file.filename);
+  const claimResults = buildClaimResults(claims, checks, changedFiles);
   const results = requirements.map((requirement) => evaluateRequirement(requirement, changedFiles, checks));
 
   const verdict = results.some((result) => result.status === "FAILED")
