@@ -59,8 +59,8 @@ program
       const repository = options.repo ?? detectRepository();
       const report = await verifyPullRequest({
         repository,
-        issueNumber: options.issue,
-        prNumber: options.pr
+        prNumber: options.pr,
+        ...(options.issue !== undefined ? { issueNumber: options.issue } : {})
       });
       const markdown = renderMarkdown(report);
 
