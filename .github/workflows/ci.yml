@@ -51,3 +51,10 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: CLI version smoke
+        shell: bash
+        run: |
+          EXPECTED_VERSION="$(node -p "require('./package.json').version")"
+          ACTUAL_VERSION="$(node dist/cli.js --version)"
+          test "${ACTUAL_VERSION}" = "${EXPECTED_VERSION}"

@@ -8,6 +8,7 @@ import { parseVerificationPolicy, shouldFailVerification } from "./policy.js";
 import { upsertPullRequestComment } from "./pr-comment.js";
 import { detectRepository } from "./repository.js";
 import { renderMarkdown, renderTerminal } from "./report.js";
+import { getPackageVersion } from "./version.js";
 import { verifyPullRequest } from "./verify.js";
 
 function positiveInteger(value: string): number {
@@ -22,7 +23,7 @@ const program = new Command();
 program
   .name("prtruth")
   .description("Evidence-based verification for GitHub pull requests")
-  .version("0.0.0");
+  .version(getPackageVersion());
 
 program
   .command("verify")
