@@ -140,4 +140,40 @@ describe("buildClaimResults", () => {
       evidence: []
     });
   });
+
+  it("shows relevant changed files without upgrading an unsupported business claim", () => {
+    const claims: CompletionClaim[] = [
+      { id: "claim-1", text: "protected dashboard", source: "claim-section" }
+    ];
+
+    const [result] = buildClaimResults(claims, [], [
+      "apps/web/app/dashboard/page.tsx",
+      "apps/web/app/pricing/page.tsx"
+    ]);
+
+    expect(result).toMatchObject({
+      status: "UNPROVEN",
+      reason: "Changed files are relevant, but no deterministic evidence rule currently proves this completion claim.",
+      evidence: [
+        {
+          kind: "diff",
+          summary: "Changed file: apps/web/app/dashboard/page.tsx"
+        }
+      ]
+    });
+  });
+
+  it("does not weaken explicit compatibility safeguards with filename relevance", () => {
+    const claims: CompletionClaim[] = [
+      { id: "claim-1", text: "No breaking API changes", source: "claim-section" }
+    ];
+
+    const [result] = buildClaimResults(claims, [], ["docs/api-breaking-changes.md"]);
+
+    expect(result).toMatchObject({
+      status: "UNPROVEN",
+      reason: "A no-breaking-changes claim requires API or schema compatibility evidence, not only CI status.",
+      evidence: []
+    });
+  });
 });
