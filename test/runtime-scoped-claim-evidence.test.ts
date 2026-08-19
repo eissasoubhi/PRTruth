@@ -27,6 +27,47 @@ describe("runtime-scoped CI completion claims", () => {
     expect(assessment.matchedChecks.map((item) => item.name)).toEqual(["tests / node 22.12.0"]);
   });
 
+  it("proves a multi-version Node claim from separate matrix jobs", () => {
+    const assessment = assessCompletionClaim("Tests pass on Node 20 and Node 22", [
+      check("tests / node 20", "success"),
+      check("tests / node 22", "success")
+    ]);
+
+    expect(assessment.status).toBe("PROVEN");
+    expect(assessment.matchedChecks.map((item) => item.name)).toEqual([
+      "tests / node 20",
+      "tests / node 22"
+    ]);
+  });
+
+  it("keeps a multi-version runtime claim unproven when one matrix version is missing", () => {
+    const assessment = assessCompletionClaim("Tests pass on Node 20 and Node 22", [
+      check("tests / node 22", "success")
+    ]);
+
+    expect(assessment.status).toBe("UNPROVEN");
+    expect(assessment.reason).toContain("node 20");
+    expect(assessment.matchedChecks.map((item) => item.name)).toEqual(["tests / node 22"]);
+  });
+
+  it("requires the Cartesian product for runtime and database matrices", () => {
+    const complete = assessCompletionClaim("Tests pass on Node 20 and Node 22 with PostgreSQL and MySQL", [
+      check("tests / node 20 / postgres", "success"),
+      check("tests / node 20 / mysql", "success"),
+      check("tests / node 22 / postgres", "success"),
+      check("tests / node 22 / mysql", "success")
+    ]);
+    const incomplete = assessCompletionClaim("Tests pass on Node 20 and Node 22 with PostgreSQL and MySQL", [
+      check("tests / node 20 / postgres", "success"),
+      check("tests / node 20 / mysql", "success"),
+      check("tests / node 22 / postgres", "success")
+    ]);
+
+    expect(complete.status).toBe("PROVEN");
+    expect(incomplete.status).toBe("UNPROVEN");
+    expect(incomplete.matchedChecks).toHaveLength(3);
+  });
+
   it("keeps an exact PHP minor-version claim scoped to that minor line", () => {
     const assessment = assessCompletionClaim("Tests pass on PHP 8.3", [
       check("phpunit / php 8.2", "success"),
