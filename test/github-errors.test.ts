@@ -68,7 +68,7 @@ describe("GitHub API errors", () => {
           protection: {
             required_status_checks: {
               contexts: ["classic-ci"],
-              checks: [{ context: "classic-app-ci", app_id: 7 }]
+              checks: [{ context: "classic-check-ci", app_id: null }]
             }
           }
         });
@@ -79,7 +79,7 @@ describe("GitHub API errors", () => {
             type: "required_status_checks",
             parameters: {
               required_status_checks: [
-                { context: "ruleset-ci", integration_id: 8 },
+                { context: "ruleset-ci", integration_id: null },
                 { context: "classic-ci" }
               ]
             }
@@ -93,9 +93,53 @@ describe("GitHub API errors", () => {
     const client = new GitHubClient("token");
     await expect(client.getRequiredStatusCheckContexts("acme/shop", "main")).resolves.toEqual([
       "classic-ci",
-      "classic-app-ci",
+      "classic-check-ci",
       "ruleset-ci"
     ]);
+  });
+
+  it("fails closed when a required context is pinned to a specific app source", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/repos/acme/shop/branches/main")) {
+        return jsonResponse({
+          protection: {
+            required_status_checks: {
+              contexts: [],
+              checks: [{ context: "trusted-ci", app_id: 1234 }]
+            }
+          }
+        });
+      }
+      if (url.includes("/repos/acme/shop/rules/branches/main?")) return jsonResponse([]);
+      throw new Error(`Unexpected GitHub request: ${url}`);
+    });
+
+    const client = new GitHubClient("token");
+    await expect(client.getRequiredStatusCheckContexts("acme/shop", "main")).resolves.toBeNull();
+  });
+
+  it("fails closed when an active ruleset pins a required context to a specific integration", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/repos/acme/shop/branches/main")) {
+        return jsonResponse({ protection: { required_status_checks: { contexts: [] } } });
+      }
+      if (url.includes("/repos/acme/shop/rules/branches/main?")) {
+        return jsonResponse([
+          {
+            type: "required_status_checks",
+            parameters: {
+              required_status_checks: [{ context: "trusted-ci", integration_id: 5678 }]
+            }
+          }
+        ]);
+      }
+      throw new Error(`Unexpected GitHub request: ${url}`);
+    });
+
+    const client = new GitHubClient("token");
+    await expect(client.getRequiredStatusCheckContexts("acme/shop", "main")).resolves.toBeNull();
   });
 
   it("fails closed when active ruleset metadata is unavailable", async () => {
