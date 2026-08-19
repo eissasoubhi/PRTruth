@@ -77,6 +77,42 @@ describe("generic CI evidence", () => {
     expect(assessment?.reason).toContain("windows + node 24");
   });
 
+  it("does not ignore Summernote host variants when browser lanes are green", () => {
+    const assessment = assessGenericCiSuccess(
+      "CI is green on Summernote BS3 + BS4 + BS5 + Lite across Chromium and Firefox",
+      [
+        check("BS3 / Chromium", "success"),
+        check("BS3 / Firefox", "success"),
+        check("BS4 / Chromium", "success"),
+        check("BS4 / Firefox", "success"),
+        check("BS5 / Chromium", "success"),
+        check("BS5 / Firefox", "success"),
+        check("Lite / Chromium", "success")
+      ]
+    );
+
+    expect(assessment).toMatchObject({ status: "UNPROVEN" });
+    expect(assessment?.reason).toContain("summernote lite + firefox");
+  });
+
+  it("proves the full Summernote host and browser matrix when every lane is visible", () => {
+    const assessment = assessGenericCiSuccess(
+      "CI is green on Summernote Bootstrap 3, Bootstrap 4, Bootstrap 5 and Lite across Chromium and Firefox",
+      [
+        check("Bootstrap 3 / Chromium", "success"),
+        check("Bootstrap 3 / Firefox", "success"),
+        check("Bootstrap 4 / Chromium", "success"),
+        check("Bootstrap 4 / Firefox", "success"),
+        check("Bootstrap 5 / Chromium", "success"),
+        check("Bootstrap 5 / Firefox", "success"),
+        check("Summernote Lite / Chromium", "success"),
+        check("Summernote Lite / Firefox", "success")
+      ]
+    );
+
+    expect(assessment).toMatchObject({ status: "PROVEN" });
+  });
+
   it("keeps the claim unproven when a top-level check is skipped", () => {
     const assessment = assessGenericCiSuccess("The workflow completes successfully", [
       check("Backend", "success"),
