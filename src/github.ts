@@ -133,6 +133,14 @@ function apiError(response: Response, path: string): GitHubApiError {
   );
 }
 
+function hasPinnedCheckSource(appId: number | null | undefined): boolean {
+  // GitHub uses a positive app/integration identifier when a required context
+  // must come from a specific GitHub App. PRTruth currently records check names
+  // and conclusions, not the originating app identity, so such a rule cannot be
+  // proved safely yet. Non-positive/null values do not pin a specific source.
+  return typeof appId === "number" && appId > 0;
+}
+
 export class GitHubClient {
   constructor(private readonly token = process.env.GITHUB_TOKEN) {}
 
@@ -260,12 +268,14 @@ export class GitHubClient {
         if (context.trim()) contexts.add(context.trim());
       }
       for (const check of classicStatusChecks?.checks ?? []) {
+        if (hasPinnedCheckSource(check.app_id)) return null;
         if (check.context.trim()) contexts.add(check.context.trim());
       }
 
       for (const rule of rules) {
         if (rule.type !== "required_status_checks") continue;
         for (const check of rule.parameters?.required_status_checks ?? []) {
+          if (hasPinnedCheckSource(check.integration_id)) return null;
           if (check.context.trim()) contexts.add(check.context.trim());
         }
       }
