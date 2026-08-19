@@ -146,8 +146,16 @@ jobs:
           if (!validationClaim) {
             throw new Error('V0.2: expected the prose CI validation claim');
           }
-          if (validationClaim.status !== 'PROVEN') {
-            throw new Error(`V0.2: expected composite CI validation to be PROVEN, got ${validationClaim.status}`);
+          if (validationClaim.status !== 'UNPROVEN') {
+            throw new Error(
+              `V0.2: Linux ARM64 validation must stay UNPROVEN when check names omit the claimed platform, got ${validationClaim.status}`
+            );
+          }
+          if (!validationClaim.reason?.includes('linux, arm64')) {
+            throw new Error(`V0.2: expected missing Linux ARM64 scope in reason, got ${validationClaim.reason}`);
+          }
+          if (validationClaim.evidence?.some((item) => item.kind === 'ci')) {
+            throw new Error('V0.2: unscoped green CI must not be cited as Linux ARM64 proof');
           }
 
           const specificCoverageClaim = (v03.claimResults ?? []).find((result) =>
