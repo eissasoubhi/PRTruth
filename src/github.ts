@@ -13,6 +13,7 @@ interface GitHubPullResponse {
   body: string | null;
   html_url: string;
   head: { sha: string };
+  base: { ref: string };
 }
 
 interface GitHubPullFileResponse {
@@ -55,6 +56,28 @@ interface GitHubWorkflowJobResponse {
 
 interface GitHubWorkflowJobsResponse {
   jobs: GitHubWorkflowJobResponse[];
+}
+
+interface GitHubBranchResponse {
+  protection?: {
+    required_status_checks?: {
+      contexts?: string[];
+      checks?: Array<{
+        context: string;
+        app_id?: number | null;
+      }>;
+    };
+  };
+}
+
+interface GitHubRequiredStatusCheckRuleResponse {
+  type: string;
+  parameters?: {
+    required_status_checks?: Array<{
+      context: string;
+      integration_id?: number | null;
+    }>;
+  };
 }
 
 export interface GitHubContentResponse {
@@ -214,6 +237,46 @@ export class GitHubClient {
     } catch (error) {
       if (error instanceof GitHubApiError && (error.status === 403 || error.status === 404)) {
         return [];
+      }
+      throw error;
+    }
+  }
+
+  async getRequiredStatusCheckContexts(repository: string, branch: string): Promise<string[] | null> {
+    try {
+      const encodedBranch = encodeURIComponent(branch);
+      const [branchInfo, rules] = await Promise.all([
+        this.request<GitHubBranchResponse>(`/repos/${repository}/branches/${encodedBranch}`),
+        collectPages((page, perPage) =>
+          this.request<GitHubRequiredStatusCheckRuleResponse[]>(
+            `/repos/${repository}/rules/branches/${encodedBranch}?per_page=${perPage}&page=${page}`
+          )
+        )
+      ]);
+
+      const contexts = new Set<string>();
+      const classicStatusChecks = branchInfo.protection?.required_status_checks;
+      for (const context of classicStatusChecks?.contexts ?? []) {
+        if (context.trim()) contexts.add(context.trim());
+      }
+      for (const check of classicStatusChecks?.checks ?? []) {
+        if (check.context.trim()) contexts.add(check.context.trim());
+      }
+
+      for (const rule of rules) {
+        if (rule.type !== "required_status_checks") continue;
+        for (const check of rule.parameters?.required_status_checks ?? []) {
+          if (check.context.trim()) contexts.add(check.context.trim());
+        }
+      }
+
+      return [...contexts];
+    } catch (error) {
+      // Required-check evidence must be complete before it can strengthen a
+      // verdict. If either classic branch metadata or active ruleset metadata
+      // is unavailable, callers keep required-check claims UNPROVEN.
+      if (error instanceof GitHubApiError && (error.status === 403 || error.status === 404)) {
+        return null;
       }
       throw error;
     }
