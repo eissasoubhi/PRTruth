@@ -19,6 +19,7 @@ function cleanItem(value: string): string {
 function looksLikeValidationProse(value: string): boolean {
   return VALIDATION_TERM.test(value)
     && SUCCESS_TERM.test(value)
+    && !FAILURE_TERM.test(value)
     && !NEGATED_SUCCESS_TERM.test(value)
     && !NON_SUCCESS_VALIDATION_TERM.test(value);
 }
