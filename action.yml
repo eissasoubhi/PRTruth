@@ -85,6 +85,7 @@ runs:
         fi
 
         TEMP_DIR="$(mktemp -d)"
+        trap 'rm -rf "$TEMP_DIR"' EXIT
         (
           cd "$TEMP_DIR"
           npx -y "prtruth@${PRTRUTH_VERSION}" "${args[@]}"
