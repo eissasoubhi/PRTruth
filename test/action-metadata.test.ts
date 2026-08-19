@@ -47,8 +47,9 @@ describe("GitHub Action metadata", () => {
     expect(metadata).toContain('cd "$TEMP_DIR"');
   });
 
-  it("uses unauthenticated npm configuration and disables package scripts", () => {
+  it("uses the public unauthenticated npm registry and disables package scripts", () => {
     expect(metadata).toContain("NPM_CONFIG_USERCONFIG: /dev/null");
+    expect(metadata).toContain("NPM_CONFIG_REGISTRY: https://registry.npmjs.org");
     expect(metadata).toContain('NPM_CONFIG_IGNORE_SCRIPTS: "true"');
   });
 
