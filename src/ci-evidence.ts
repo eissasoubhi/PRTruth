@@ -40,18 +40,34 @@ function matcher(label: string, pattern: RegExp): ScopeMatcher {
   };
 }
 
-function runtimeMatchers(text: string, runtime: "node" | "php" | "python" | "go"): ScopeMatcher[] {
-  const runtimePattern = runtime === "node" ? "(?:node(?:\\.js)?|nodejs)" : runtime;
-  const claimPattern = new RegExp(`\\b${runtimePattern}\\s*v?(\\d+(?:\\.\\d+){0,2})\\b`, "gi");
+function versionMatchers(text: string, label: string, claimPattern: RegExp, checkPrefixPattern: string): ScopeMatcher[] {
   const versions = [...new Set([...text.matchAll(claimPattern)].map((match) => match[1]).filter(Boolean))] as string[];
-
   return versions.map((version) => {
     const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     return matcher(
-      `${runtime} ${version}`,
-      new RegExp(`\\b${runtimePattern}\\s*v?${escapedVersion}(?:\\b|\\.)`, "i")
+      `${label} ${version}`,
+      new RegExp(`\\b${checkPrefixPattern}\\s*v?${escapedVersion}(?:\\b|\\.)`, "i")
     );
   });
+}
+
+function runtimeMatchers(text: string, runtime: "node" | "php" | "python" | "go"): ScopeMatcher[] {
+  const runtimePattern = runtime === "node" ? "(?:node(?:\\.js)?|nodejs)" : runtime;
+  return versionMatchers(
+    text,
+    runtime,
+    new RegExp(`\\b${runtimePattern}\\s*v?(\\d+(?:\\.\\d+){0,2})\\b`, "gi"),
+    runtimePattern
+  );
+}
+
+function frameworkMatchers(text: string): ScopeMatcher[] {
+  return versionMatchers(
+    text,
+    "rails",
+    /\b(?:rails|ruby on rails|active\s*record)\s*v?(\d+(?:\.\d+){1,3})\b/gi,
+    "(?:rails|ruby on rails|active\\s*record)"
+  );
 }
 
 function databaseMatchers(text: string, database: "postgres" | "mysql" | "mariadb" | "sqlite"): ScopeMatcher[] {
@@ -119,10 +135,10 @@ function genericCiScopeRequirements(text: string): GenericCiScopeRequirements | 
   const databases: ScopeMatcher[] = [];
   const versionedDatabases = new Set<string>();
   for (const database of ["postgres", "mysql", "mariadb", "sqlite"] as const) {
-    const versionMatchers = databaseMatchers(text, database);
-    if (versionMatchers.length > 0) {
+    const databaseVersionMatchers = databaseMatchers(text, database);
+    if (databaseVersionMatchers.length > 0) {
       versionedDatabases.add(database);
-      databases.push(...versionMatchers);
+      databases.push(...databaseVersionMatchers);
     }
   }
   if ((/\bpostgres(?:ql)?\b|\bpg\b/i.test(text)) && !versionedDatabases.has("postgres")) {
@@ -147,6 +163,9 @@ function genericCiScopeRequirements(text: string): GenericCiScopeRequirements | 
   if (/\bbootstrap\s*5\b|\bbs5\b/i.test(text)) summernoteHosts.push(matcher("bootstrap 5", /\bbootstrap\s*5\b|\bbs5\b/i));
   if (/\bsummernote\b/i.test(text) && /\blite\b/i.test(text)) summernoteHosts.push(matcher("summernote lite", /\bsummernote\s+lite\b|\blite\b/i));
   if (summernoteHosts.length > 0) axes.push(summernoteHosts);
+
+  const frameworks = frameworkMatchers(text);
+  if (frameworks.length > 0) axes.push(frameworks);
 
   for (const runtime of ["node", "php", "python", "go"] as const) {
     const runtimes = runtimeMatchers(text, runtime);
