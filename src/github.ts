@@ -141,8 +141,12 @@ function positiveSourceId(value: number | null | undefined): number | undefined 
   return typeof value === "number" && value > 0 ? value : undefined;
 }
 
+function normalizeContext(context: string): string {
+  return context.trim().toLowerCase();
+}
+
 function requiredCheckKey(check: RequiredStatusCheck): string {
-  return `${check.context.trim().toLowerCase()}\u0000${check.appId ?? "any"}`;
+  return `${normalizeContext(check.context)}\u0000${check.appId ?? "any"}`;
 }
 
 function dedupeRequiredChecks(checks: RequiredStatusCheck[]): RequiredStatusCheck[] {
@@ -279,22 +283,22 @@ export class GitHubClient {
       const requiredChecks: RequiredStatusCheck[] = [];
       const classicStatusChecks = branchInfo.protection?.required_status_checks;
       const classicChecks = classicStatusChecks?.checks ?? [];
+      const sourceAwareContexts = new Set<string>();
 
-      // GitHub exposes `checks` as the source-aware form of classic required
-      // status checks. When it is present, prefer it over the legacy `contexts`
-      // list so an app-pinned requirement is not accidentally duplicated as an
-      // unpinned context.
-      if (classicChecks.length > 0) {
-        for (const check of classicChecks) {
-          const context = check.context.trim();
-          if (!context) continue;
-          const appId = positiveSourceId(check.app_id);
-          requiredChecks.push({ context, ...(appId !== undefined ? { appId } : {}) });
-        }
-      } else {
-        for (const contextValue of classicStatusChecks?.contexts ?? []) {
-          const context = contextValue.trim();
-          if (context) requiredChecks.push({ context });
+      for (const check of classicChecks) {
+        const context = check.context.trim();
+        if (!context) continue;
+        const appId = positiveSourceId(check.app_id);
+        requiredChecks.push({ context, ...(appId !== undefined ? { appId } : {}) });
+        sourceAwareContexts.add(normalizeContext(context));
+      }
+
+      // Preserve distinct legacy contexts, but do not add a generic duplicate
+      // for a context already represented by source-aware `checks` metadata.
+      for (const contextValue of classicStatusChecks?.contexts ?? []) {
+        const context = contextValue.trim();
+        if (context && !sourceAwareContexts.has(normalizeContext(context))) {
+          requiredChecks.push({ context });
         }
       }
 
@@ -310,9 +314,6 @@ export class GitHubClient {
 
       return dedupeRequiredChecks(requiredChecks);
     } catch (error) {
-      // Required-check evidence must be complete before it can strengthen a
-      // verdict. If either classic branch metadata or active ruleset metadata
-      // is unavailable, callers keep required-check claims UNPROVEN.
       if (error instanceof GitHubApiError && (error.status === 403 || error.status === 404)) {
         return null;
       }
