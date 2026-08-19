@@ -15,8 +15,9 @@ export interface ClaimEvidenceAssessment {
 type CheckCategory = "install" | "test" | "lint" | "type" | "build";
 type DatabaseScopeToken = "postgres" | "mysql" | "sqlite" | "mariadb";
 type BrowserScopeToken = "chromium" | "chrome" | "firefox" | "webkit" | "safari";
+type ServiceScopeToken = "redis" | "rabbitmq" | "kafka" | "elasticsearch";
 type MatrixScopeToken = DatabaseScopeToken | BrowserScopeToken;
-type StaticScopeToken = "windows" | "macos" | "linux" | "arm64" | "x64" | MatrixScopeToken;
+type StaticScopeToken = "windows" | "macos" | "linux" | "arm64" | "x64" | MatrixScopeToken | ServiceScopeToken;
 type RuntimeScopeToken = `node:${string}` | `php:${string}` | `python:${string}` | `go:${string}`;
 type ScopeToken = StaticScopeToken | RuntimeScopeToken;
 
@@ -88,6 +89,10 @@ function claimScopes(claim: string): ScopeToken[] {
   if (/\bfirefox\b/i.test(claim)) scopes.push("firefox");
   if (/\bwebkit\b/i.test(claim)) scopes.push("webkit");
   if (/\bsafari\b/i.test(claim)) scopes.push("safari");
+  if (/\bredis\b/i.test(claim)) scopes.push("redis");
+  if (/\brabbitmq\b|\brabbit mq\b/i.test(claim)) scopes.push("rabbitmq");
+  if (/\bkafka\b|\bapache kafka\b/i.test(claim)) scopes.push("kafka");
+  if (/\belasticsearch\b|\belastic search\b/i.test(claim)) scopes.push("elasticsearch");
   scopes.push(...runtimeScopes(claim));
   return scopes;
 }
@@ -130,7 +135,11 @@ function checkMatchesScope(check: CheckRunSummary, scope: ScopeToken): boolean {
   if (scope === "chrome") return /\bchrome\b|\bgoogle chrome\b/.test(name);
   if (scope === "firefox") return /\bfirefox\b/.test(name);
   if (scope === "webkit") return /\bwebkit\b/.test(name);
-  return /\bsafari\b/.test(name);
+  if (scope === "safari") return /\bsafari\b/.test(name);
+  if (scope === "redis") return /\bredis\b/.test(name);
+  if (scope === "rabbitmq") return /\brabbitmq\b|\brabbit mq\b/.test(name);
+  if (scope === "kafka") return /\bkafka\b|\bapache kafka\b/.test(name);
+  return /\belasticsearch\b|\belastic search\b/.test(name);
 }
 
 function checkMatchesCategory(check: CheckRunSummary, category: CheckCategory): boolean {
