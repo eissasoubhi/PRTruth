@@ -78,7 +78,23 @@ function genericCiScopeRequirements(text: string): GenericCiScopeRequirements | 
   }
   if (runnerTypes.length > 0) axes.push(runnerTypes);
 
-  if (/\bgpu\b/i.test(text)) {
+  const accelerators: ScopeMatcher[] = [];
+  if (/\ba100\b/i.test(text)) accelerators.push(matcher("a100", /\ba100\b/i));
+  if (/\bh100\b/i.test(text)) accelerators.push(matcher("h100", /\bh100\b/i));
+  if (/\bh200\b/i.test(text)) accelerators.push(matcher("h200", /\bh200\b/i));
+  if (/\bb200\b/i.test(text)) accelerators.push(matcher("b200", /\bb200\b/i));
+  if (/\bb300\b/i.test(text)) accelerators.push(matcher("b300", /\bb300\b/i));
+  if (/\bgb200\b/i.test(text)) accelerators.push(matcher("gb200", /\bgb200\b/i));
+  if (/\bgb300\b/i.test(text)) accelerators.push(matcher("gb300", /\bgb300\b/i));
+  if (/\bl40s\b/i.test(text)) accelerators.push(matcher("l40s", /\bl40s\b/i));
+  if (/\brtx(?:[\s_-]*pro)?[\s_-]*6000(?:bw)?\b/i.test(text)) {
+    accelerators.push(matcher("rtx pro 6000", /\brtx(?:[\s_-]*pro)?[\s_-]*6000(?:bw)?\b/i));
+  }
+  if (accelerators.length > 0) axes.push(accelerators);
+
+  // A specific accelerator model is stronger evidence of GPU execution than a
+  // generic "gpu" token. Do not require both strings in the observable job name.
+  if (/\bgpu\b/i.test(text) && accelerators.length === 0) {
     environment.push(matcher("gpu", /\bgpu\b/i));
   }
 
