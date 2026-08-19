@@ -9,6 +9,7 @@ describe("workflow checkout hardening", () => {
   for (const path of [
     ".github/workflows/ci.yml",
     ".github/workflows/action-smoke.yml",
+    ".github/workflows/dogfood.yml",
     ".github/workflows/release.yml",
     ".github/workflows/npm-publish.yml"
   ]) {
@@ -24,6 +25,7 @@ describe("workflow checkout hardening", () => {
     for (const path of [
       ".github/workflows/ci.yml",
       ".github/workflows/action-smoke.yml",
+      ".github/workflows/dogfood.yml",
       ".github/workflows/npm-publish.yml"
     ]) {
       expect(workflow(path)).toContain("permissions:\n  contents: read");
