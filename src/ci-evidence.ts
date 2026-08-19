@@ -14,13 +14,102 @@ export interface CiEvidenceAssessment {
   matchedChecks: CheckRunSummary[];
 }
 
+interface ScopeMatcher {
+  label: string;
+  matches(name: string): boolean;
+}
+
+interface GenericCiScopeRequirements {
+  axes: ScopeMatcher[][];
+  environment: ScopeMatcher[];
+}
+
 function hasSuccessLanguage(text: string): boolean {
   return /\b(?:pass(?:es|ed)?|succeed(?:s|ed)?|success(?:ful(?:ly)?)?|green)\b/i.test(text);
 }
 
-function hasExplicitEnvironmentScope(text: string): boolean {
-  return /\b(?:windows|win32|macos|mac os|osx|darwin|linux|arm64|aarch64|x64|x86_64|amd64|postgres(?:ql)?|mysql|sqlite3?|mariadb|chromium|chrome|google chrome|firefox|webkit|safari|redis|rabbitmq|rabbit mq|kafka|apache kafka|elasticsearch|elastic search)\b/i.test(text)
-    || /\b(?:node(?:\.js)?|nodejs|php|python|go)\s*v?\d+(?:\.\d+){0,2}\b/i.test(text);
+function matcher(label: string, pattern: RegExp): ScopeMatcher {
+  return {
+    label,
+    matches: (name: string) => pattern.test(name)
+  };
+}
+
+function runtimeMatchers(text: string, runtime: "node" | "php" | "python" | "go"): ScopeMatcher[] {
+  const runtimePattern = runtime === "node" ? "(?:node(?:\\.js)?|nodejs)" : runtime;
+  const claimPattern = new RegExp(`\\b${runtimePattern}\\s*v?(\\d+(?:\\.\\d+){0,2})\\b`, "gi");
+  const versions = [...new Set([...text.matchAll(claimPattern)].map((match) => match[1]).filter(Boolean))] as string[];
+
+  return versions.map((version) => {
+    const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return matcher(
+      `${runtime} ${version}`,
+      new RegExp(`\\b${runtimePattern}\\s*v?${escapedVersion}(?:\\b|\\.)`, "i")
+    );
+  });
+}
+
+function genericCiScopeRequirements(text: string): GenericCiScopeRequirements | null {
+  const axes: ScopeMatcher[][] = [];
+  const environment: ScopeMatcher[] = [];
+
+  const operatingSystems: ScopeMatcher[] = [];
+  if (/\bwindows\b|\bwin32\b/i.test(text)) operatingSystems.push(matcher("windows", /\bwindows\b|\bwin32\b/i));
+  if (/\bmacos\b|\bmac os\b|\bosx\b|\bdarwin\b/i.test(text)) operatingSystems.push(matcher("macos", /\bmacos\b|\bmac os\b|\bosx\b|\bdarwin\b/i));
+  if (/\blinux\b/i.test(text)) operatingSystems.push(matcher("linux", /\blinux\b/i));
+  if (operatingSystems.length > 0) axes.push(operatingSystems);
+
+  const architectures: ScopeMatcher[] = [];
+  if (/\barm64\b|\baarch64\b/i.test(text)) architectures.push(matcher("arm64", /\barm64\b|\baarch64\b/i));
+  if (/\bx64\b|\bx86_64\b|\bamd64\b/i.test(text)) architectures.push(matcher("x64", /\bx64\b|\bx86_64\b|\bamd64\b/i));
+  if (architectures.length > 0) axes.push(architectures);
+
+  const databases: ScopeMatcher[] = [];
+  if (/\bpostgres(?:ql)?\b/i.test(text)) databases.push(matcher("postgres", /\bpostgres(?:ql)?\b/i));
+  if (/\bmysql\b/i.test(text)) databases.push(matcher("mysql", /\bmysql\b/i));
+  if (/\bsqlite(?:3)?\b/i.test(text)) databases.push(matcher("sqlite", /\bsqlite(?:3)?\b/i));
+  if (/\bmariadb\b/i.test(text)) databases.push(matcher("mariadb", /\bmariadb\b/i));
+  if (databases.length > 0) axes.push(databases);
+
+  const browsers: ScopeMatcher[] = [];
+  if (/\bchromium\b/i.test(text)) browsers.push(matcher("chromium", /\bchromium\b/i));
+  if (/\bchrome\b|\bgoogle chrome\b/i.test(text)) browsers.push(matcher("chrome", /\bchrome\b|\bgoogle chrome\b/i));
+  if (/\bfirefox\b/i.test(text)) browsers.push(matcher("firefox", /\bfirefox\b/i));
+  if (/\bwebkit\b/i.test(text)) browsers.push(matcher("webkit", /\bwebkit\b/i));
+  if (/\bsafari\b/i.test(text)) browsers.push(matcher("safari", /\bsafari\b/i));
+  if (browsers.length > 0) axes.push(browsers);
+
+  for (const runtime of ["node", "php", "python", "go"] as const) {
+    const runtimes = runtimeMatchers(text, runtime);
+    if (runtimes.length > 0) axes.push(runtimes);
+  }
+
+  if (/\bredis\b/i.test(text)) environment.push(matcher("redis", /\bredis\b/i));
+  if (/\brabbitmq\b|\brabbit mq\b/i.test(text)) environment.push(matcher("rabbitmq", /\brabbitmq\b|\brabbit mq\b/i));
+  if (/\bkafka\b|\bapache kafka\b/i.test(text)) environment.push(matcher("kafka", /\bkafka\b|\bapache kafka\b/i));
+  if (/\belasticsearch\b|\belastic search\b/i.test(text)) environment.push(matcher("elasticsearch", /\belasticsearch\b|\belastic search\b/i));
+
+  return axes.length > 0 || environment.length > 0 ? { axes, environment } : null;
+}
+
+function missingScopeCombinations(
+  checks: CheckRunSummary[],
+  requirements: GenericCiScopeRequirements
+): string[][] {
+  const environmentMatches = checks.filter((check) =>
+    requirements.environment.every((scope) => scope.matches(check.name))
+  );
+  const combinations = requirements.axes.reduce<ScopeMatcher[][]>(
+    (current, axis) => current.flatMap((combination) => axis.map((scope) => [...combination, scope])),
+    [[]]
+  );
+
+  return combinations
+    .filter((combination) => !environmentMatches.some((check) => combination.every((scope) => scope.matches(check.name))))
+    .map((combination) => [
+      ...requirements.environment.map((scope) => scope.label),
+      ...combination.map((scope) => scope.label)
+    ]);
 }
 
 export function isGenericCiSuccessStatement(text: string): boolean {
@@ -69,21 +158,26 @@ export function assessGenericCiSuccess(
     };
   }
 
-  // Aggregate success can prove a truly generic statement such as "CI is green".
-  // It cannot prove an explicit runtime/browser/OS/etc. scope that is not tied
-  // to matching observable checks. Keep that stronger statement conservative.
-  if (hasExplicitEnvironmentScope(text)) {
-    return {
-      status: "UNPROVEN",
-      reason: "A scoped CI-success claim requires evidence for the named environment, not only aggregate CI status.",
-      matchedChecks: []
-    };
+  const scopeRequirements = genericCiScopeRequirements(text);
+  if (scopeRequirements) {
+    const missing = missingScopeCombinations(topLevelChecks, scopeRequirements);
+    if (missing.length > 0) {
+      return {
+        status: "UNPROVEN",
+        reason: `No top-level CI check was observed for the claimed scope: ${missing
+          .map((combination) => combination.join(" + "))
+          .join(", ")}.`,
+        matchedChecks: topLevelChecks
+      };
+    }
   }
 
   if (topLevelChecks.every((check) => check.conclusion === "success")) {
     return {
       status: "PROVEN",
-      reason: "All observed top-level CI checks completed successfully.",
+      reason: scopeRequirements
+        ? "All observed top-level CI checks succeeded and every claimed environment scope was observed."
+        : "All observed top-level CI checks completed successfully.",
       matchedChecks: topLevelChecks
     };
   }
