@@ -1,4 +1,4 @@
-import type { CheckRunSummary, EvidenceStatus } from "./types.js";
+import type { CheckRunSummary, EvidenceStatus, RequiredStatusCheck } from "./types.js";
 
 const FAILED_CONCLUSIONS = new Set([
   "failure",
@@ -78,9 +78,6 @@ function genericCiScopeRequirements(text: string): GenericCiScopeRequirements | 
   }
   if (runnerTypes.length > 0) axes.push(runnerTypes);
 
-  // Hardware/capability labels can materially change what a CI lane proves.
-  // Real self-hosted fleets commonly use `gpu` as a runner capability label;
-  // do not let a generic self-hosted success silently prove GPU execution.
   if (/\bgpu\b/i.test(text)) {
     environment.push(matcher("gpu", /\bgpu\b/i));
   }
@@ -152,9 +149,20 @@ function normalizeCheckName(name: string): string {
   return name.trim().toLowerCase();
 }
 
+function checkMatchesRequiredSource(check: CheckRunSummary, required: RequiredStatusCheck): boolean {
+  return normalizeCheckName(required.context) === normalizeCheckName(check.name)
+    && (required.appId === undefined || check.appId === required.appId);
+}
+
+function requiredCheckLabel(required: RequiredStatusCheck): string {
+  return required.appId === undefined
+    ? required.context
+    : `${required.context} (GitHub App ${required.appId})`;
+}
+
 function assessConfiguredRequiredChecks(
   checks: CheckRunSummary[],
-  requiredCheckContexts: string[] | null
+  requiredCheckContexts: RequiredStatusCheck[] | null
 ): CiEvidenceAssessment {
   if (requiredCheckContexts === null) {
     return {
@@ -172,33 +180,40 @@ function assessConfiguredRequiredChecks(
     };
   }
 
-  const requiredContexts = [...new Set(requiredCheckContexts.map((context) => context.trim()).filter(Boolean))];
-  const matchedChecks = checks.filter((check) =>
-    requiredContexts.some((context) => normalizeCheckName(context) === normalizeCheckName(check.name))
+  const requiredContexts = requiredCheckContexts.filter((required, index, all) =>
+    required.context.trim()
+    && all.findIndex((candidate) =>
+      normalizeCheckName(candidate.context) === normalizeCheckName(required.context)
+      && candidate.appId === required.appId
+    ) === index
   );
-  const missingContexts = requiredContexts.filter((context) =>
-    !matchedChecks.some((check) => normalizeCheckName(check.name) === normalizeCheckName(context))
+  const matchedChecks = checks.filter((check) =>
+    requiredContexts.some((required) => checkMatchesRequiredSource(check, required))
+  );
+  const missingContexts = requiredContexts.filter((required) =>
+    !matchedChecks.some((check) => checkMatchesRequiredSource(check, required))
   );
 
   if (missingContexts.length > 0) {
     return {
       status: "UNPROVEN",
-      reason: `Required status checks were not observed on the pull request head: ${missingContexts.join(", ")}.`,
+      reason: `Required status checks were not observed with the configured source on the pull request head: ${missingContexts
+        .map(requiredCheckLabel)
+        .join(", ")}.`,
       matchedChecks
     };
   }
 
-  for (const context of requiredContexts) {
-    const contextChecks = matchedChecks.filter(
-      (check) => normalizeCheckName(check.name) === normalizeCheckName(context)
-    );
+  for (const required of requiredContexts) {
+    const contextChecks = matchedChecks.filter((check) => checkMatchesRequiredSource(check, required));
+    const label = requiredCheckLabel(required);
     const incomplete = contextChecks.find(
       (check) => check.status !== "completed" || check.conclusion === null
     );
     if (incomplete) {
       return {
         status: "UNPROVEN",
-        reason: `Required status check has not completed: ${context}.`,
+        reason: `Required status check has not completed: ${label}.`,
         matchedChecks
       };
     }
@@ -208,21 +223,21 @@ function assessConfiguredRequiredChecks(
     if (successes.length > 0 && failures.length > 0) {
       return {
         status: "UNPROVEN",
-        reason: `Conflicting observations exist for required status check: ${context}.`,
+        reason: `Conflicting observations exist for required status check: ${label}.`,
         matchedChecks
       };
     }
     if (failures.length > 0) {
       return {
         status: "FAILED",
-        reason: `A required status check failed: ${context}.`,
+        reason: `A required status check failed: ${label}.`,
         matchedChecks
       };
     }
     if (successes.length !== contextChecks.length) {
       return {
         status: "UNPROVEN",
-        reason: `Required status check did not provide a definitive success result: ${context}.`,
+        reason: `Required status check did not provide a definitive success result: ${label}.`,
         matchedChecks
       };
     }
@@ -230,7 +245,7 @@ function assessConfiguredRequiredChecks(
 
   return {
     status: "PROVEN",
-    reason: "Every configured required status check was observed and completed successfully.",
+    reason: "Every configured required status check was observed from its configured source and completed successfully.",
     matchedChecks
   };
 }
@@ -243,13 +258,10 @@ export function isGenericCiSuccessStatement(text: string): boolean {
 export function assessGenericCiSuccess(
   text: string,
   checks: CheckRunSummary[],
-  requiredCheckContexts: string[] | null = null
+  requiredCheckContexts: RequiredStatusCheck[] | null = null
 ): CiEvidenceAssessment | null {
   if (!isGenericCiSuccessStatement(text)) return null;
 
-  // Workflow steps are valuable for specific claims such as "lint passes".
-  // A statement about the whole CI must be evaluated from top-level checks so
-  // one failed job cannot be hidden by many successful steps in other jobs.
   const topLevelChecks = checks.filter((check) => check.scope !== "step");
   const requiredChecksClaim = isRequiredChecksSuccessStatement(text);
 
