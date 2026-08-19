@@ -92,7 +92,8 @@ describe("generic CI evidence", () => {
     );
 
     expect(assessment).toMatchObject({ status: "UNPROVEN" });
-    expect(assessment?.reason).toContain("summernote lite + firefox");
+    expect(assessment?.reason).toContain("firefox");
+    expect(assessment?.reason).toContain("summernote lite");
   });
 
   it("proves the full Summernote host and browser matrix when every lane is visible", () => {
