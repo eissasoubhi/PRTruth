@@ -69,6 +69,8 @@ That is useful for:
 
 An AI coding agent says a task is complete. PRTruth checks the issue requirements, PR claims, changed files, patch candidates, and CI evidence before you trust the claim.
 
+See the [AI coding-agent workflow playbook](docs/agent-workflows.md) for a practical agent → CI → PRTruth → review flow, safe policy progression, and agent-specific guidance.
+
 ### Acceptance criteria verification
 
 An issue contains a checklist or an `Acceptance criteria` section. PRTruth turns those requirements into explicit `PROVEN`, `FAILED`, or `UNPROVEN` results so reviewers can see what still needs evidence.
