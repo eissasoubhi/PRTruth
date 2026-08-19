@@ -101,6 +101,21 @@ Typecheck failed on the self-hosted runner.
     ]);
   });
 
+  it("rejects skipped, pending, and not-run validation reports", () => {
+    const claims = extractCompletionClaims(`
+## Validation
+- [x] Backend tests were not run on ARM64.
+- Frontend tests weren't executed in Chromium.
+- Typecheck was skipped because this is docs-only.
+- Build pending on the self-hosted runner.
+- Lint passes.
+`);
+
+    expect(claims.map((claim) => claim.text)).toEqual([
+      "Lint passes."
+    ]);
+  });
+
   it("returns no claims for prose without explicit claim structure", () => {
     expect(extractCompletionClaims("This PR probably fixes the bug.")).toEqual([]);
   });
