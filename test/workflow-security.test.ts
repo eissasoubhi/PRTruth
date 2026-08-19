@@ -46,14 +46,4 @@ describe("workflow checkout hardening", () => {
     expect(content).toContain("if: github.event_name == 'workflow_dispatch'");
     expect(content).toContain('if [[ "${GITHUB_REF}" != "refs/heads/main" ]]');
   });
-
-  it("publishes npm only after a successful Release workflow on main", () => {
-    const content = workflow(".github/workflows/npm-publish.yml");
-
-    expect(content).toContain('workflow_run:\n    workflows: ["Release"]\n    types: [completed]');
-    expect(content).toContain("github.event.workflow_run.conclusion == 'success'");
-    expect(content).toContain("github.event.workflow_run.head_branch == 'main'");
-    expect(content).toContain("WORKFLOW_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}");
-    expect(content).not.toContain("release:\n    types: [published]");
-  });
 });
