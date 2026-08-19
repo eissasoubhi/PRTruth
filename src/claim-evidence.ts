@@ -13,7 +13,9 @@ export interface ClaimEvidenceAssessment {
 }
 
 type CheckCategory = "install" | "test" | "lint" | "type" | "build";
-type ScopeToken = "windows" | "macos" | "linux" | "arm64" | "x64";
+type StaticScopeToken = "windows" | "macos" | "linux" | "arm64" | "x64";
+type RuntimeScopeToken = `node:${string}` | `php:${string}` | `python:${string}` | `go:${string}`;
+type ScopeToken = StaticScopeToken | RuntimeScopeToken;
 
 const FAILED_CONCLUSIONS = new Set([
   "failure",
@@ -45,6 +47,25 @@ function claimCategories(claim: string): CheckCategory[] {
   return categories;
 }
 
+function runtimeScopes(claim: string): RuntimeScopeToken[] {
+  const scopes: RuntimeScopeToken[] = [];
+  const definitions = [
+    { runtime: "node", pattern: /\b(?:node(?:\.js)?|nodejs)\s*v?(\d+(?:\.\d+){0,2})\b/gi },
+    { runtime: "php", pattern: /\bphp\s*v?(\d+(?:\.\d+){0,2})\b/gi },
+    { runtime: "python", pattern: /\bpython\s*v?(\d+(?:\.\d+){0,2})\b/gi },
+    { runtime: "go", pattern: /\bgo\s*v?(\d+(?:\.\d+){0,2})\b/gi }
+  ] as const;
+
+  for (const { runtime, pattern } of definitions) {
+    for (const match of claim.matchAll(pattern)) {
+      const version = match[1];
+      if (version) scopes.push(`${runtime}:${version}` as RuntimeScopeToken);
+    }
+  }
+
+  return scopes;
+}
+
 function claimScopes(claim: string): ScopeToken[] {
   const scopes: ScopeToken[] = [];
   if (/\bwindows\b|\bwin32\b/i.test(claim)) scopes.push("windows");
@@ -52,11 +73,27 @@ function claimScopes(claim: string): ScopeToken[] {
   if (/\blinux\b/i.test(claim)) scopes.push("linux");
   if (/\barm64\b|\baarch64\b/i.test(claim)) scopes.push("arm64");
   if (/\bx64\b|\bx86_64\b|\bamd64\b/i.test(claim)) scopes.push("x64");
+  scopes.push(...runtimeScopes(claim));
   return scopes;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function runtimeScopeMatches(name: string, scope: RuntimeScopeToken): boolean {
+  const [runtime, version] = scope.split(":", 2);
+  if (!runtime || !version) return false;
+  const runtimePattern = runtime === "node"
+    ? "(?:node(?:\\.js)?|nodejs)"
+    : runtime;
+  const versionPattern = escapeRegex(version).replace(/\\\./g, "\\.");
+  return new RegExp(`\\b${runtimePattern}\\s*v?${versionPattern}(?:\\b|\\.)`, "i").test(name);
 }
 
 function checkMatchesScope(check: CheckRunSummary, scope: ScopeToken): boolean {
   const name = check.name.toLowerCase();
+  if (scope.includes(":")) return runtimeScopeMatches(name, scope as RuntimeScopeToken);
   if (scope === "windows") return /\bwindows\b|\bwin32\b/.test(name);
   if (scope === "macos") return /\bmacos\b|\bmac os\b|\bosx\b|\bdarwin\b/.test(name);
   if (scope === "linux") return /\blinux\b/.test(name);
@@ -110,7 +147,7 @@ function categoryLabel(categories: CheckCategory[]): string {
 }
 
 function scopeLabel(scopes: ScopeToken[]): string {
-  return scopes.join(", ");
+  return scopes.map((scope) => scope.replace(":", " ")).join(", ");
 }
 
 function claimTerms(text: string): string[] {
