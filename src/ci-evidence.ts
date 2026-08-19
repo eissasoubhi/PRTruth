@@ -34,14 +34,6 @@ export function assessGenericCiSuccess(
 ): CiEvidenceAssessment | null {
   if (!isGenericCiSuccessStatement(text)) return null;
 
-  if (hasExplicitEnvironmentScope(text)) {
-    return {
-      status: "UNPROVEN",
-      reason: "A scoped CI-success claim requires evidence for the named environment, not only aggregate CI status.",
-      matchedChecks: []
-    };
-  }
-
   // Workflow steps are valuable for specific claims such as "lint passes".
   // A statement about the whole CI must be evaluated from top-level checks so
   // one failed job cannot be hidden by many successful steps in other jobs.
@@ -74,6 +66,17 @@ export function assessGenericCiSuccess(
       status: "UNPROVEN",
       reason: `Top-level CI has not completed: ${incomplete.map((check) => check.name).join(", ")}.`,
       matchedChecks: topLevelChecks
+    };
+  }
+
+  // Aggregate success can prove a truly generic statement such as "CI is green".
+  // It cannot prove an explicit runtime/browser/OS/etc. scope that is not tied
+  // to matching observable checks. Keep that stronger statement conservative.
+  if (hasExplicitEnvironmentScope(text)) {
+    return {
+      status: "UNPROVEN",
+      reason: "A scoped CI-success claim requires evidence for the named environment, not only aggregate CI status.",
+      matchedChecks: []
     };
   }
 
