@@ -42,13 +42,14 @@ describe("generic CI evidence", () => {
     expect(assessment?.reason).toContain("required-check membership");
   });
 
-  it("still proves a required-check claim when every observed check is green", () => {
+  it("keeps required-check claims unproven even when every observed check is green", () => {
     const assessment = assessGenericCiSuccess("All required checks are green", [
       check("unit", "success"),
       check("integration", "success")
     ]);
 
-    expect(assessment).toMatchObject({ status: "PROVEN" });
+    expect(assessment).toMatchObject({ status: "UNPROVEN" });
+    expect(assessment?.reason).toContain("membership and completeness");
   });
 
   it("proves a generic CI claim only when every observed top-level check succeeds", () => {

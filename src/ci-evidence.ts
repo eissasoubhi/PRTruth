@@ -163,6 +163,7 @@ export function assessGenericCiSuccess(
   // A statement about the whole CI must be evaluated from top-level checks so
   // one failed job cannot be hidden by many successful steps in other jobs.
   const topLevelChecks = checks.filter((check) => check.scope !== "step");
+  const requiredChecksClaim = isRequiredChecksSuccessStatement(text);
 
   if (topLevelChecks.length === 0) {
     return {
@@ -176,10 +177,10 @@ export function assessGenericCiSuccess(
     FAILED_CONCLUSIONS.has(check.conclusion ?? "")
   );
   if (failed.length > 0) {
-    if (isRequiredChecksSuccessStatement(text)) {
+    if (requiredChecksClaim) {
       return {
         status: "UNPROVEN",
-        reason: "Observed CI includes non-successful checks, but required-check membership is not available in the current evidence.",
+        reason: "Observed CI includes non-successful checks, but required-check membership and completeness are not available in the current evidence.",
         matchedChecks: topLevelChecks
       };
     }
@@ -198,6 +199,17 @@ export function assessGenericCiSuccess(
     return {
       status: "UNPROVEN",
       reason: `Top-level CI has not completed: ${incomplete.map((check) => check.name).join(", ")}.`,
+      matchedChecks: topLevelChecks
+    };
+  }
+
+  // Without branch-protection/ruleset metadata, a green observed set cannot
+  // prove that every required check was observed. A required check may be
+  // expected but absent from the check-run evidence entirely.
+  if (requiredChecksClaim) {
+    return {
+      status: "UNPROVEN",
+      reason: "Observed CI checks are successful, but required-check membership and completeness are not available in the current evidence.",
       matchedChecks: topLevelChecks
     };
   }
