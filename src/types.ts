@@ -40,6 +40,12 @@ export interface CheckRunSummary {
   conclusion: string | null;
   htmlUrl?: string;
   scope?: "check" | "step";
+  appId?: number;
+}
+
+export interface RequiredStatusCheck {
+  context: string;
+  appId?: number;
 }
 
 export interface RepositoryInstruction {
