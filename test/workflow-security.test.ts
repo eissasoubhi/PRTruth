@@ -13,11 +13,39 @@ describe("workflow checkout hardening", () => {
     ".github/workflows/release.yml",
     ".github/workflows/npm-publish.yml"
   ]) {
-    it(`${path} does not persist checkout credentials`, () => {
+    it(`${path} uses checkout v6 without persisting credentials`, () => {
       const content = workflow(path);
 
-      expect(content).toContain("uses: actions/checkout@v4");
+      expect(content).toContain("uses: actions/checkout@v6");
+      expect(content).not.toContain("uses: actions/checkout@v4");
       expect(content).toContain("persist-credentials: false");
+    });
+  }
+
+  for (const path of [
+    ".github/workflows/ci.yml",
+    ".github/workflows/dogfood.yml",
+    ".github/workflows/release.yml",
+    ".github/workflows/npm-publish.yml"
+  ]) {
+    it(`${path} uses setup-node v6 with implicit package-manager caching disabled`, () => {
+      const content = workflow(path);
+
+      expect(content).toContain("uses: actions/setup-node@v6");
+      expect(content).not.toContain("uses: actions/setup-node@v4");
+      expect(content).toContain("package-manager-cache: false");
+    });
+  }
+
+  for (const path of [
+    ".github/workflows/release.yml",
+    ".github/workflows/npm-publish.yml"
+  ]) {
+    it(`${path} uses github-script v9`, () => {
+      const content = workflow(path);
+
+      expect(content).toContain("uses: actions/github-script@v9");
+      expect(content).not.toContain("uses: actions/github-script@v7");
     });
   }
 
