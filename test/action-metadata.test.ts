@@ -4,10 +4,12 @@ import { describe, expect, it } from "vitest";
 const metadata = readFileSync(new URL("../action.yml", import.meta.url), "utf8");
 
 describe("GitHub Action metadata", () => {
-  it("uses the composite action runtime and Node 22", () => {
+  it("uses the composite action runtime and current setup-node action for Node 22", () => {
     expect(metadata).toContain("using: composite");
-    expect(metadata).toContain("actions/setup-node@v4");
+    expect(metadata).toContain("actions/setup-node@v6");
+    expect(metadata).not.toContain("actions/setup-node@v4");
     expect(metadata).toContain("node-version: 22.12.0");
+    expect(metadata).toContain("package-manager-cache: false");
   });
 
   it("exposes the inputs needed for a practical review gate", () => {
