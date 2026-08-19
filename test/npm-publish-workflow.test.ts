@@ -7,6 +7,14 @@ const workflow = readFileSync(
 );
 
 describe("npm publish workflow", () => {
+  it("publishes only after a successful Release workflow on main", () => {
+    expect(workflow).toContain('workflow_run:\n    workflows: ["Release"]\n    types: [completed]');
+    expect(workflow).toContain("github.event.workflow_run.conclusion == 'success'");
+    expect(workflow).toContain("github.event.workflow_run.head_branch == 'main'");
+    expect(workflow).toContain("WORKFLOW_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}");
+    expect(workflow).not.toContain("release:\n    types: [published]");
+  });
+
   it("verifies the exact package version from the public registry after publish", () => {
     expect(workflow).toContain("Verify published package from public registry");
     expect(workflow).toContain('npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" version');
