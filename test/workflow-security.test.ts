@@ -35,6 +35,13 @@ describe("workflow checkout hardening", () => {
       expect(content).not.toContain("uses: actions/setup-node@v4");
       expect(content).toContain("package-manager-cache: false");
     });
+
+    it(`${path} uses the Node 24-based pnpm action v6`, () => {
+      const content = workflow(path);
+
+      expect(content).toContain("uses: pnpm/action-setup@v6");
+      expect(content).not.toContain("uses: pnpm/action-setup@v4");
+    });
   }
 
   for (const path of [
