@@ -41,8 +41,9 @@ describe("GitHub Action metadata", () => {
     expect(metadata).not.toContain("dist/cli.js");
   });
 
-  it("runs npx from a neutral temporary directory", () => {
+  it("runs npx from a neutral temporary directory and cleans it up", () => {
     expect(metadata).toContain('TEMP_DIR="$(mktemp -d)"');
+    expect(metadata).toContain('trap \'rm -rf "$TEMP_DIR"\' EXIT');
     expect(metadata).toContain('cd "$TEMP_DIR"');
   });
 
