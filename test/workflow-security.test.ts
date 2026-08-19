@@ -48,4 +48,13 @@ describe("workflow checkout hardening", () => {
     expect(content).toContain("if: github.event_name == 'workflow_dispatch'");
     expect(content).toContain('if [[ "${GITHUB_REF}" != "refs/heads/main" ]]');
   });
+
+  it("forces the dogfood package smoke to the public npm registry and cleans its temp directory", () => {
+    const content = workflow(".github/workflows/dogfood.yml");
+
+    expect(content).toContain("NPM_CONFIG_USERCONFIG: /dev/null");
+    expect(content).toContain("NPM_CONFIG_REGISTRY: https://registry.npmjs.org");
+    expect(content).toContain('TEMP_DIR="$(mktemp -d)"');
+    expect(content).toContain("trap 'rm -rf \"${TEMP_DIR}\"' EXIT");
+  });
 });
