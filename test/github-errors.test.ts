@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GitHubApiError, GitHubClient } from "../src/github.js";
 
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "content-type": "application/json" }
+  });
+}
+
 describe("GitHub API errors", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -51,5 +58,59 @@ describe("GitHub API errors", () => {
     const client = new GitHubClient("token");
 
     await expect(client.getContent("acme/shop", "AGENTS.md")).resolves.toBeNull();
+  });
+
+  it("combines classic branch protection and active ruleset required checks", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/repos/acme/shop/branches/main")) {
+        return jsonResponse({
+          protection: {
+            required_status_checks: {
+              contexts: ["classic-ci"],
+              checks: [{ context: "classic-app-ci", app_id: 7 }]
+            }
+          }
+        });
+      }
+      if (url.includes("/repos/acme/shop/rules/branches/main?")) {
+        return jsonResponse([
+          {
+            type: "required_status_checks",
+            parameters: {
+              required_status_checks: [
+                { context: "ruleset-ci", integration_id: 8 },
+                { context: "classic-ci" }
+              ]
+            }
+          },
+          { type: "non_fast_forward" }
+        ]);
+      }
+      throw new Error(`Unexpected GitHub request: ${url}`);
+    });
+
+    const client = new GitHubClient("token");
+    await expect(client.getRequiredStatusCheckContexts("acme/shop", "main")).resolves.toEqual([
+      "classic-ci",
+      "classic-app-ci",
+      "ruleset-ci"
+    ]);
+  });
+
+  it("fails closed when active ruleset metadata is unavailable", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/repos/acme/shop/branches/main")) {
+        return jsonResponse({ protection: { required_status_checks: { contexts: ["classic-ci"] } } });
+      }
+      if (url.includes("/repos/acme/shop/rules/branches/main?")) {
+        return new Response("forbidden", { status: 403 });
+      }
+      throw new Error(`Unexpected GitHub request: ${url}`);
+    });
+
+    const client = new GitHubClient("token");
+    await expect(client.getRequiredStatusCheckContexts("acme/shop", "main")).resolves.toBeNull();
   });
 });
