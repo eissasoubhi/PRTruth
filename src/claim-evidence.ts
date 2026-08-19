@@ -15,11 +15,13 @@ export interface ClaimEvidenceAssessment {
 type CheckCategory = "install" | "test" | "lint" | "type" | "build";
 type DatabaseScopeToken = "postgres" | "mysql" | "sqlite" | "mariadb";
 type BrowserScopeToken = "chromium" | "chrome" | "firefox" | "webkit" | "safari";
+type OperatingSystemScopeToken = "windows" | "macos" | "linux";
+type ArchitectureScopeToken = "arm64" | "x64";
 type ServiceScopeToken = "redis" | "rabbitmq" | "kafka" | "elasticsearch";
 type RuntimeFamily = "node" | "php" | "python" | "go";
 type RuntimeScopeToken = `${RuntimeFamily}:${string}`;
-type MatrixScopeToken = DatabaseScopeToken | BrowserScopeToken | RuntimeScopeToken;
-type StaticScopeToken = "windows" | "macos" | "linux" | "arm64" | "x64" | DatabaseScopeToken | BrowserScopeToken | ServiceScopeToken;
+type MatrixScopeToken = DatabaseScopeToken | BrowserScopeToken | OperatingSystemScopeToken | ArchitectureScopeToken | RuntimeScopeToken;
+type StaticScopeToken = OperatingSystemScopeToken | ArchitectureScopeToken | DatabaseScopeToken | BrowserScopeToken | ServiceScopeToken;
 type ScopeToken = StaticScopeToken | RuntimeScopeToken;
 
 const FAILED_CONCLUSIONS = new Set([
@@ -32,6 +34,8 @@ const FAILED_CONCLUSIONS = new Set([
 
 const DATABASE_SCOPES = new Set<DatabaseScopeToken>(["postgres", "mysql", "sqlite", "mariadb"]);
 const BROWSER_SCOPES = new Set<BrowserScopeToken>(["chromium", "chrome", "firefox", "webkit", "safari"]);
+const OPERATING_SYSTEM_SCOPES = new Set<OperatingSystemScopeToken>(["windows", "macos", "linux"]);
+const ARCHITECTURE_SCOPES = new Set<ArchitectureScopeToken>(["arm64", "x64"]);
 
 const FILE_MATCH_STOP_WORDS = new Set([
   "the", "and", "for", "with", "that", "this", "from", "into", "when", "then", "must", "should",
@@ -104,6 +108,14 @@ function isDatabaseScope(scope: ScopeToken): scope is DatabaseScopeToken {
 
 function isBrowserScope(scope: ScopeToken): scope is BrowserScopeToken {
   return !scope.includes(":") && BROWSER_SCOPES.has(scope as BrowserScopeToken);
+}
+
+function isOperatingSystemScope(scope: ScopeToken): scope is OperatingSystemScopeToken {
+  return !scope.includes(":") && OPERATING_SYSTEM_SCOPES.has(scope as OperatingSystemScopeToken);
+}
+
+function isArchitectureScope(scope: ScopeToken): scope is ArchitectureScopeToken {
+  return !scope.includes(":") && ARCHITECTURE_SCOPES.has(scope as ArchitectureScopeToken);
 }
 
 function isRuntimeScope(scope: ScopeToken): scope is RuntimeScopeToken {
@@ -235,12 +247,16 @@ function relevantChangedFiles(claim: string, changedFiles: string[]): string[] {
 function matrixScopeCombinations(scopes: ScopeToken[]): MatrixScopeToken[][] {
   const databases = scopes.filter(isDatabaseScope);
   const browsers = scopes.filter(isBrowserScope);
+  const operatingSystems = scopes.filter(isOperatingSystemScope);
+  const architectures = scopes.filter(isArchitectureScope);
   const runtimeMatrices = runtimeMatrixScopes(scopes);
   const runtimeFamilies = [...new Set(runtimeMatrices.map(runtimeFamily))];
   const axes: MatrixScopeToken[][] = [];
 
   if (databases.length > 0) axes.push(databases);
   if (browsers.length > 0) axes.push(browsers);
+  if (operatingSystems.length > 0) axes.push(operatingSystems);
+  if (architectures.length > 0) axes.push(architectures);
   for (const family of runtimeFamilies) {
     axes.push(runtimeMatrices.filter((scope) => runtimeFamily(scope) === family));
   }
@@ -296,7 +312,11 @@ export function assessCompletionClaim(
   const scopes = claimScopes(claim);
   const runtimeMatrices = runtimeMatrixScopes(scopes);
   const matrixScopes = scopes.filter((scope) =>
-    isDatabaseScope(scope) || isBrowserScope(scope) || runtimeMatrices.includes(scope as RuntimeScopeToken)
+    isDatabaseScope(scope)
+    || isBrowserScope(scope)
+    || isOperatingSystemScope(scope)
+    || isArchitectureScope(scope)
+    || runtimeMatrices.includes(scope as RuntimeScopeToken)
   );
   const environmentScopes = scopes.filter((scope) => !matrixScopes.includes(scope as MatrixScopeToken));
   const matrixCombinations = matrixScopeCombinations(scopes);
