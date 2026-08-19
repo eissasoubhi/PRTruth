@@ -13,7 +13,8 @@ export interface ClaimEvidenceAssessment {
 }
 
 type CheckCategory = "install" | "test" | "lint" | "type" | "build";
-type StaticScopeToken = "windows" | "macos" | "linux" | "arm64" | "x64" | "postgres" | "mysql" | "sqlite" | "mariadb";
+type DatabaseScopeToken = "postgres" | "mysql" | "sqlite" | "mariadb";
+type StaticScopeToken = "windows" | "macos" | "linux" | "arm64" | "x64" | DatabaseScopeToken;
 type RuntimeScopeToken = `node:${string}` | `php:${string}` | `python:${string}` | `go:${string}`;
 type ScopeToken = StaticScopeToken | RuntimeScopeToken;
 
@@ -24,6 +25,8 @@ const FAILED_CONCLUSIONS = new Set([
   "action_required",
   "startup_failure"
 ]);
+
+const DATABASE_SCOPES = new Set<DatabaseScopeToken>(["postgres", "mysql", "sqlite", "mariadb"]);
 
 const FILE_MATCH_STOP_WORDS = new Set([
   "the", "and", "for", "with", "that", "this", "from", "into", "when", "then", "must", "should",
@@ -79,6 +82,10 @@ function claimScopes(claim: string): ScopeToken[] {
   if (/\bmariadb\b/i.test(claim)) scopes.push("mariadb");
   scopes.push(...runtimeScopes(claim));
   return scopes;
+}
+
+function isDatabaseScope(scope: ScopeToken): scope is DatabaseScopeToken {
+  return !scope.includes(":") && DATABASE_SCOPES.has(scope as DatabaseScopeToken);
 }
 
 function escapeRegex(value: string): string {
@@ -221,14 +228,34 @@ export function assessCompletionClaim(
   }
 
   const scopes = claimScopes(claim);
-  const matchesByCategory = categories.map((category) => ({
-    category,
-    checks: checks.filter((check) =>
+  const databaseScopes = scopes.filter(isDatabaseScope);
+  const environmentScopes = scopes.filter((scope) => !isDatabaseScope(scope));
+  const matchesByCategory = categories.map((category) => {
+    const environmentMatches = checks.filter((check) =>
       checkMatchesCategory(check, category)
-      && scopes.every((scope) => checkMatchesScope(check, scope))
-    )
-  }));
-  const missing = matchesByCategory.filter((entry) => entry.checks.length === 0).map((entry) => entry.category);
+      && environmentScopes.every((scope) => checkMatchesScope(check, scope))
+    );
+
+    if (databaseScopes.length === 0) {
+      return { category, checks: environmentMatches, missingDatabaseScopes: [] as DatabaseScopeToken[] };
+    }
+
+    const databaseMatches = databaseScopes.map((scope) => ({
+      scope,
+      checks: environmentMatches.filter((check) => checkMatchesScope(check, scope))
+    }));
+
+    return {
+      category,
+      checks: dedupeChecks(databaseMatches.flatMap((entry) => entry.checks)),
+      missingDatabaseScopes: databaseMatches
+        .filter((entry) => entry.checks.length === 0)
+        .map((entry) => entry.scope)
+    };
+  });
+  const missing = matchesByCategory
+    .filter((entry) => entry.checks.length === 0 || entry.missingDatabaseScopes.length > 0)
+    .map((entry) => entry.category);
   const matchedChecks = dedupeChecks(matchesByCategory.flatMap((entry) => entry.checks));
 
   if (missing.length > 0) {
