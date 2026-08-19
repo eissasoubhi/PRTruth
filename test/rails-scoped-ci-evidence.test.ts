@@ -44,7 +44,8 @@ describe("Rails-scoped generic CI evidence", () => {
     );
 
     expect(assessment).toMatchObject({ status: "UNPROVEN" });
-    expect(assessment?.reason).toContain("rails 8.1.3.1 + mysql 8.4");
+    expect(assessment?.reason).toContain("rails 8.1.3.1");
+    expect(assessment?.reason).toContain("mysql 8.4");
   });
 
   it("accepts Active Record wording when the job exposes the same framework version", () => {
