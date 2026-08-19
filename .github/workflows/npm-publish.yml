@@ -43,7 +43,7 @@ jobs:
           echo "ref=${REF}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout release source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ steps.source.outputs.ref }}
           persist-credentials: false
@@ -55,10 +55,11 @@ jobs:
           run_install: false
 
       - name: Setup Node.js for npm
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22.12.0
           registry-url: https://registry.npmjs.org/
+          package-manager-cache: false
 
       - name: Resolve release tag
         id: release
@@ -78,7 +79,7 @@ jobs:
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Validate published GitHub release exists
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
         with:
