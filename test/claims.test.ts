@@ -86,6 +86,21 @@ Typecheck failed on the self-hosted runner.
     ]);
   });
 
+  it("rejects progressive failures and common contracted negations", () => {
+    const claims = extractCompletionClaims(`
+## Validation
+- [x] Backend tests are failing on ARM64.
+- Frontend tests aren't passing in Chromium.
+- Typecheck hasn't succeeded in the clean container.
+- Build can't complete on the self-hosted runner.
+- Lint is passing.
+`);
+
+    expect(claims.map((claim) => claim.text)).toEqual([
+      "Lint is passing."
+    ]);
+  });
+
   it("returns no claims for prose without explicit claim structure", () => {
     expect(extractCompletionClaims("This PR probably fixes the bug.")).toEqual([]);
   });
