@@ -6,6 +6,7 @@ on:
       - "src/github.ts"
       - "src/verify.ts"
       - "src/ci-evidence.ts"
+      - "src/types.ts"
       - "test/required-check-config.test.ts"
       - ".github/workflows/github-rules-smoke.yml"
   workflow_dispatch:
@@ -58,7 +59,7 @@ jobs:
 
           const headers = {
             Accept: 'application/vnd.github+json',
-            'X-GitHub-Api-Version': '2026-03-10'
+            'X-GitHub-Api-Version': '2022-11-28'
           };
 
           const branchResponse = await fetch(
@@ -72,6 +73,12 @@ jobs:
           const classicChecks = branch?.protection?.required_status_checks?.checks ?? [];
           if (!Array.isArray(classicChecks) || classicChecks.length === 0) {
             throw new Error('expected real classic required-check metadata from kubernetes/kubernetes');
+          }
+          const pinnedClassicChecks = classicChecks.filter(
+            (check) => typeof check?.app_id === 'number' && check.app_id > 0
+          );
+          if (pinnedClassicChecks.length === 0) {
+            throw new Error('expected at least one app-pinned Kubernetes required check');
           }
 
           const rulesResponse = await fetch(
@@ -87,19 +94,27 @@ jobs:
           }
 
           const client = new GitHubClient(undefined);
-          const contexts = await client.getRequiredStatusCheckContexts(
+          const requiredChecks = await client.getRequiredStatusCheckContexts(
             'kubernetes/kubernetes',
             'master'
           );
-          if (contexts !== null && !Array.isArray(contexts)) {
-            throw new Error('required-check resolver returned an invalid result shape');
+          if (!Array.isArray(requiredChecks) || requiredChecks.length === 0) {
+            throw new Error('required-check resolver did not return Kubernetes required checks');
+          }
+
+          for (const expected of pinnedClassicChecks) {
+            const observed = requiredChecks.find(
+              (check) => check.context === expected.context && check.appId === expected.app_id
+            );
+            if (!observed) {
+              throw new Error(
+                `resolver lost app identity for ${expected.context} / app ${expected.app_id}`
+              );
+            }
           }
 
           console.log(`classic required checks observed: ${classicChecks.length}`);
+          console.log(`app-pinned classic checks observed: ${pinnedClassicChecks.length}`);
           console.log(`active github/docs rules observed: ${rules.length}`);
-          console.log(
-            contexts === null
-              ? 'resolver conservatively returned null because some required-check source identity cannot be proven'
-              : `resolver returned ${contexts.length} required contexts`
-          );
+          console.log(`resolver returned ${requiredChecks.length} source-aware required checks`);
           NODE
