@@ -6,6 +6,7 @@ const VALIDATION_TERM = /\b(?:ci|tests?|test suite|lint(?:ing)?|type[ -]?check|t
 const SUCCESS_TERM = /\b(?:pass(?:es|ed|ing)?|succeed(?:s|ed|ing)?|success(?:ful(?:ly)?)?|green|complete(?:s|d|ing)?)\b/i;
 const FAILURE_TERM = /\b(?:fail(?:s|ed|ing|ure)?|broken|red)\b/i;
 const NEGATED_SUCCESS_TERM = /\b(?:(?:did|does|do|has|have|is|are|was|were|can)\s+not|never|didn't|doesn't|don't|hasn't|haven't|isn't|aren't|wasn't|weren't|cannot|can't)\s+(?:pass(?:es|ed|ing)?|succeed(?:s|ed|ing)?|complete(?:s|d|ing)?)\b/i;
+const NON_SUCCESS_VALIDATION_TERM = /\b(?:skip(?:s|ped|ping)?|pending)\b|\b(?:(?:did|does|do|has|have|is|are|was|were)\s+not|didn't|doesn't|don't|hasn't|haven't|isn't|aren't|wasn't|weren't)\s+(?:run|execut(?:e|ed)|start(?:ed)?|perform(?:ed)?|verif(?:y|ied)|check(?:ed)?)\b/i;
 
 function cleanItem(value: string): string {
   return value
@@ -18,12 +19,13 @@ function cleanItem(value: string): string {
 function looksLikeValidationProse(value: string): boolean {
   return VALIDATION_TERM.test(value)
     && SUCCESS_TERM.test(value)
-    && !NEGATED_SUCCESS_TERM.test(value);
+    && !NEGATED_SUCCESS_TERM.test(value)
+    && !NON_SUCCESS_VALIDATION_TERM.test(value);
 }
 
 function looksLikeFailureReport(value: string): boolean {
   return VALIDATION_TERM.test(value)
-    && (FAILURE_TERM.test(value) || NEGATED_SUCCESS_TERM.test(value))
+    && (FAILURE_TERM.test(value) || NEGATED_SUCCESS_TERM.test(value) || NON_SUCCESS_VALIDATION_TERM.test(value))
     && !looksLikeValidationProse(value);
 }
 
