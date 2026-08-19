@@ -109,6 +109,23 @@ describe("generic CI evidence", () => {
     expect(wrongRunner?.reason).toContain("self-hosted");
   });
 
+  it("does not infer GPU execution from a generic self-hosted lane", () => {
+    const assessment = assessGenericCiSuccess("CI is green on self-hosted GPU runners", [
+      check("Backend / self-hosted", "success")
+    ]);
+
+    expect(assessment).toMatchObject({ status: "UNPROVEN" });
+    expect(assessment?.reason).toContain("gpu");
+  });
+
+  it("proves a self-hosted GPU claim only when the capability is visible", () => {
+    const assessment = assessGenericCiSuccess("CI is green on self-hosted GPU runners", [
+      check("build-and-test (gpu) / self-hosted", "success")
+    ]);
+
+    expect(assessment).toMatchObject({ status: "PROVEN" });
+  });
+
   it("combines runner type with OS matrix claims", () => {
     const assessment = assessGenericCiSuccess(
       "CI is green on self-hosted Linux and Windows runners",
