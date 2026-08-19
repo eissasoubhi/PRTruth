@@ -58,7 +58,8 @@ function runtimeScopes(claim: string): RuntimeScopeToken[] {
 
   for (const { runtime, pattern } of definitions) {
     for (const match of claim.matchAll(pattern)) {
-      scopes.push(`${runtime}:${match[1]}` as RuntimeScopeToken);
+      const version = match[1];
+      if (version) scopes.push(`${runtime}:${version}` as RuntimeScopeToken);
     }
   }
 
@@ -82,6 +83,7 @@ function escapeRegex(value: string): string {
 
 function runtimeScopeMatches(name: string, scope: RuntimeScopeToken): boolean {
   const [runtime, version] = scope.split(":", 2);
+  if (!runtime || !version) return false;
   const runtimePattern = runtime === "node"
     ? "(?:node(?:\\.js)?|nodejs)"
     : runtime;
