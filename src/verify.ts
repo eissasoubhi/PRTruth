@@ -1,4 +1,4 @@
-import { buildClaimResults } from "./claim-evidence.js";
+import { assessCompletionClaim, buildClaimResults } from "./claim-evidence.js";
 import { assessGenericCiSuccess } from "./ci-evidence.js";
 import { extractCompletionClaims } from "./claims.js";
 import {
@@ -41,6 +41,22 @@ function checkCategory(text: string): string | null {
   return null;
 }
 
+function ciAssessmentToRequirementResult(
+  requirement: Requirement,
+  assessment: ReturnType<typeof assessCompletionClaim>
+): RequirementResult {
+  return {
+    requirement,
+    status: assessment.status,
+    reason: assessment.reason,
+    evidence: assessment.matchedChecks.map((check) => ({
+      kind: "ci" as const,
+      summary: `${check.name}: ${check.conclusion ?? check.status}`,
+      ...(check.htmlUrl ? { url: check.htmlUrl } : {})
+    }))
+  };
+}
+
 function evaluateRequirement(
   requirement: Requirement,
   files: PatchFile[],
@@ -48,54 +64,28 @@ function evaluateRequirement(
 ): RequirementResult {
   const category = checkCategory(requirement.text);
   if (category) {
-    const matchingChecks = checks.filter((check) => check.name.toLowerCase().includes(category));
-    if (matchingChecks.length > 0) {
-      const failed = matchingChecks.find((check) =>
-        ["failure", "cancelled", "timed_out", "action_required", "startup_failure"].includes(
-          check.conclusion ?? ""
-        )
-      );
-      if (failed) {
-        return {
-          requirement,
-          status: "FAILED",
-          reason: `A matching CI check failed: ${failed.name}.`,
-          evidence: [{
-            kind: "ci",
-            summary: `${failed.name}: ${failed.conclusion ?? failed.status}`,
-            ...(failed.htmlUrl ? { url: failed.htmlUrl } : {})
-          }]
-        };
-      }
+    // Issue acceptance criteria and PR completion claims must use the same
+    // scoped CI semantics. The old requirement-only path matched merely by
+    // category name, which could let a generic green test job prove a stronger
+    // requirement such as "Tests pass on Node 22 and Node 24".
+    return ciAssessmentToRequirementResult(
+      requirement,
+      assessCompletionClaim(requirement.text, checks)
+    );
+  }
 
-      const successful = matchingChecks.filter((check) => check.conclusion === "success");
-      if (successful.length === matchingChecks.length) {
-        return {
-          requirement,
-          status: "PROVEN",
-          reason: "Matching CI checks completed successfully.",
-          evidence: successful.map((check) => ({
-            kind: "ci" as const,
-            summary: `${check.name}: success`,
-            ...(check.htmlUrl ? { url: check.htmlUrl } : {})
-          }))
-        };
-      }
-    }
-  } else {
-    const overallCi = assessGenericCiSuccess(requirement.text, checks);
-    if (overallCi) {
-      return {
-        requirement,
-        status: overallCi.status,
-        reason: overallCi.reason,
-        evidence: overallCi.matchedChecks.map((check) => ({
-          kind: "ci" as const,
-          summary: `${check.name}: ${check.conclusion ?? check.status}`,
-          ...(check.htmlUrl ? { url: check.htmlUrl } : {})
-        }))
-      };
-    }
+  const overallCi = assessGenericCiSuccess(requirement.text, checks);
+  if (overallCi) {
+    return {
+      requirement,
+      status: overallCi.status,
+      reason: overallCi.reason,
+      evidence: overallCi.matchedChecks.map((check) => ({
+        kind: "ci" as const,
+        summary: `${check.name}: ${check.conclusion ?? check.status}`,
+        ...(check.htmlUrl ? { url: check.htmlUrl } : {})
+      }))
+    };
   }
 
   const quantitativeMismatch = findQuantitativePatchMismatchEvidence(requirement.text, files);
