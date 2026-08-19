@@ -86,6 +86,32 @@ Result: UNPROVEN
 
 A changed controller and green CI are relevant, but they do not necessarily prove that non-admin users are denied access. A stronger adapter or explicit authorization test would be needed.
 
+## Scoped CI evidence
+
+A green job is only useful when it matches the scope of the claim being verified. PRTruth therefore keeps environment details in the proof instead of treating every successful test job as interchangeable.
+
+For example:
+
+```text
+Claim: Tests pass on Node 22 and Firefox
+Observed check: tests / Node 20 / Chromium — success
+Result: UNPROVEN
+```
+
+The check is green, but it is not evidence for the environment that was claimed.
+
+Current scoped evidence understands explicit operating systems and architectures, Node.js/PHP/Python/Go runtime versions, PostgreSQL/MySQL/SQLite/MariaDB databases, and Chromium/Chrome/Firefox/WebKit/Safari browsers.
+
+When a claim names several matrix values, PRTruth requires the relevant coverage instead of accepting one convenient green job. For example, a claim such as:
+
+```text
+Tests pass on PostgreSQL and MySQL in Chromium and Firefox
+```
+
+requires evidence for the claimed database/browser combinations. Missing combinations stay `UNPROVEN`; a matching failed combination makes the claim `FAILED`.
+
+This rule is intentionally conservative. PRTruth would rather say “the requested environment was not observed” than silently reuse evidence from the wrong runtime, browser, database, operating system, or architecture.
+
 ## Candidate diff evidence is not proof
 
 When PRTruth cannot deterministically prove a requirement, it can still point the reviewer at added patch lines whose terms are relevant to the requirement.
