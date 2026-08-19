@@ -97,11 +97,23 @@ jobs:
         run: |
           PACKAGE_NAME="$(node -p "require('./package.json').name")"
           PACKAGE_VERSION="$(node -p "require('./package.json').version")"
-          if npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" version --silent >/dev/null 2>&1; then
+          PACKAGE_SPEC="${PACKAGE_NAME}@${PACKAGE_VERSION}"
+
+          set +e
+          LOOKUP_OUTPUT="$(npm view "${PACKAGE_SPEC}" version --json 2>&1)"
+          LOOKUP_STATUS=$?
+          set -e
+
+          if [[ "${LOOKUP_STATUS}" -eq 0 ]]; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "${PACKAGE_NAME}@${PACKAGE_VERSION} is already published; skipping."
-          else
+            echo "${PACKAGE_SPEC} is already published; skipping."
+          elif grep -Eq 'E404|404 Not Found|is not in this registry' <<<"${LOOKUP_OUTPUT}"; then
             echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "${PACKAGE_SPEC} is not published yet."
+          else
+            echo "Unable to determine whether ${PACKAGE_SPEC} already exists in the public npm registry." >&2
+            printf '%s\n' "${LOOKUP_OUTPUT}" >&2
+            exit "${LOOKUP_STATUS}"
           fi
 
       - name: Install dependencies
@@ -146,9 +158,11 @@ jobs:
               TEMP_DIR="$(mktemp -d)"
               if CLI_VERSION="$(cd "${TEMP_DIR}" && npx -y "${PACKAGE_NAME}@${PACKAGE_VERSION}" --version 2>/dev/null)" \
                 && [[ "${CLI_VERSION}" == "${PACKAGE_VERSION}" ]]; then
+                rm -rf "${TEMP_DIR}"
                 echo "Verified ${PACKAGE_NAME}@${PACKAGE_VERSION} from the public npm registry."
                 exit 0
               fi
+              rm -rf "${TEMP_DIR}"
             fi
 
             if [[ "${attempt}" -eq 20 ]]; then
