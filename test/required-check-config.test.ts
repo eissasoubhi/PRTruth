@@ -29,7 +29,7 @@ describe("configured required-check verification", () => {
         return jsonResponse({
           number: 13,
           title: "Harden CI gate",
-          body: "Closes #12\n\n## Validation\nAll required checks are green.",
+          body: "Closes #12\n\n## Validation\n- [x] All required checks are green",
           html_url: "https://github.com/acme/service/pull/13",
           head: { sha: "required123" },
           base: { ref: "main" }
