@@ -1,4 +1,5 @@
 import { collectPages } from "./pagination.js";
+import type { RequiredStatusCheck } from "./types.js";
 
 interface GitHubIssueResponse {
   number: number;
@@ -27,6 +28,9 @@ interface GitHubCheckRunResponse {
   status: string;
   conclusion: string | null;
   html_url?: string;
+  app?: {
+    id: number;
+  } | null;
 }
 
 interface GitHubCheckRunsResponse {
@@ -133,12 +137,26 @@ function apiError(response: Response, path: string): GitHubApiError {
   );
 }
 
-function hasPinnedCheckSource(appId: number | null | undefined): boolean {
-  // GitHub uses a positive app/integration identifier when a required context
-  // must come from a specific GitHub App. PRTruth currently records check names
-  // and conclusions, not the originating app identity, so such a rule cannot be
-  // proved safely yet. Non-positive/null values do not pin a specific source.
-  return typeof appId === "number" && appId > 0;
+function positiveSourceId(value: number | null | undefined): number | undefined {
+  return typeof value === "number" && value > 0 ? value : undefined;
+}
+
+function normalizeContext(context: string): string {
+  return context.trim().toLowerCase();
+}
+
+function requiredCheckKey(check: RequiredStatusCheck): string {
+  return `${normalizeContext(check.context)}\u0000${check.appId ?? "any"}`;
+}
+
+function dedupeRequiredChecks(checks: RequiredStatusCheck[]): RequiredStatusCheck[] {
+  const seen = new Set<string>();
+  return checks.filter((check) => {
+    const key = requiredCheckKey(check);
+    if (!check.context.trim() || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export class GitHubClient {
@@ -250,7 +268,7 @@ export class GitHubClient {
     }
   }
 
-  async getRequiredStatusCheckContexts(repository: string, branch: string): Promise<string[] | null> {
+  async getRequiredStatusCheckContexts(repository: string, branch: string): Promise<RequiredStatusCheck[] | null> {
     try {
       const encodedBranch = encodeURIComponent(branch);
       const [branchInfo, rules] = await Promise.all([
@@ -262,29 +280,40 @@ export class GitHubClient {
         )
       ]);
 
-      const contexts = new Set<string>();
+      const requiredChecks: RequiredStatusCheck[] = [];
       const classicStatusChecks = branchInfo.protection?.required_status_checks;
-      for (const context of classicStatusChecks?.contexts ?? []) {
-        if (context.trim()) contexts.add(context.trim());
+      const classicChecks = classicStatusChecks?.checks ?? [];
+      const sourceAwareContexts = new Set<string>();
+
+      for (const check of classicChecks) {
+        const context = check.context.trim();
+        if (!context) continue;
+        const appId = positiveSourceId(check.app_id);
+        requiredChecks.push({ context, ...(appId !== undefined ? { appId } : {}) });
+        sourceAwareContexts.add(normalizeContext(context));
       }
-      for (const check of classicStatusChecks?.checks ?? []) {
-        if (hasPinnedCheckSource(check.app_id)) return null;
-        if (check.context.trim()) contexts.add(check.context.trim());
+
+      // Preserve distinct legacy contexts, but do not add a generic duplicate
+      // for a context already represented by source-aware `checks` metadata.
+      for (const contextValue of classicStatusChecks?.contexts ?? []) {
+        const context = contextValue.trim();
+        if (context && !sourceAwareContexts.has(normalizeContext(context))) {
+          requiredChecks.push({ context });
+        }
       }
 
       for (const rule of rules) {
         if (rule.type !== "required_status_checks") continue;
         for (const check of rule.parameters?.required_status_checks ?? []) {
-          if (hasPinnedCheckSource(check.integration_id)) return null;
-          if (check.context.trim()) contexts.add(check.context.trim());
+          const context = check.context.trim();
+          if (!context) continue;
+          const appId = positiveSourceId(check.integration_id);
+          requiredChecks.push({ context, ...(appId !== undefined ? { appId } : {}) });
         }
       }
 
-      return [...contexts];
+      return dedupeRequiredChecks(requiredChecks);
     } catch (error) {
-      // Required-check evidence must be complete before it can strengthen a
-      // verdict. If either classic branch metadata or active ruleset metadata
-      // is unavailable, callers keep required-check claims UNPROVEN.
       if (error instanceof GitHubApiError && (error.status === 403 || error.status === 404)) {
         return null;
       }

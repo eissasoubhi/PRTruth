@@ -6,9 +6,16 @@ function check(
   name: string,
   conclusion: string | null,
   scope: "check" | "step" = "check",
-  status = "completed"
+  status = "completed",
+  appId?: number
 ): CheckRunSummary {
-  return { name, conclusion, status, scope };
+  return {
+    name,
+    conclusion,
+    status,
+    scope,
+    ...(appId !== undefined ? { appId } : {})
+  };
 }
 
 describe("generic CI evidence", () => {
@@ -60,18 +67,59 @@ describe("generic CI evidence", () => {
         check("integration", "success"),
         check("advisory / self-hosted GPU", "failure")
       ],
-      ["unit", "integration"]
+      [{ context: "unit" }, { context: "integration" }]
     );
 
     expect(assessment).toMatchObject({ status: "PROVEN" });
     expect(assessment?.matchedChecks.map((item) => item.name)).toEqual(["unit", "integration"]);
   });
 
+  it("proves an app-pinned required check only from the configured GitHub App", () => {
+    const assessment = assessGenericCiSuccess(
+      "All required checks are green",
+      [
+        check("quality", "failure", "check", "completed", 111),
+        check("quality", "success", "check", "completed", 222)
+      ],
+      [{ context: "quality", appId: 222 }]
+    );
+
+    expect(assessment).toMatchObject({ status: "PROVEN" });
+    expect(assessment?.matchedChecks).toEqual([
+      expect.objectContaining({ name: "quality", conclusion: "success", appId: 222 })
+    ]);
+  });
+
+  it("keeps an app-pinned required check unproven when only the wrong source is observed", () => {
+    const assessment = assessGenericCiSuccess(
+      "All required checks are green",
+      [check("quality", "success", "check", "completed", 111)],
+      [{ context: "quality", appId: 222 }]
+    );
+
+    expect(assessment).toMatchObject({ status: "UNPROVEN" });
+    expect(assessment?.reason).toContain("GitHub App 222");
+  });
+
+  it("fails an app-pinned required check when the configured source fails", () => {
+    const assessment = assessGenericCiSuccess(
+      "All required checks are green",
+      [
+        check("quality", "failure", "check", "completed", 222),
+        check("quality", "success", "check", "completed", 111)
+      ],
+      [{ context: "quality", appId: 222 }]
+    );
+
+    expect(assessment).toMatchObject({ status: "FAILED" });
+    expect(assessment?.reason).toContain("GitHub App 222");
+  });
+
   it("keeps required-check claims unproven when a configured required context is missing", () => {
     const assessment = assessGenericCiSuccess(
       "All required checks are green",
       [check("unit", "success")],
-      ["unit", "integration"]
+      [{ context: "unit" }, { context: "integration" }]
     );
 
     expect(assessment).toMatchObject({ status: "UNPROVEN" });
@@ -85,7 +133,7 @@ describe("generic CI evidence", () => {
         check("unit", "failure"),
         check("advisory", "success")
       ],
-      ["unit"]
+      [{ context: "unit" }]
     );
 
     expect(assessment).toMatchObject({ status: "FAILED" });

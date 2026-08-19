@@ -92,20 +92,20 @@ describe("GitHub API errors", () => {
 
     const client = new GitHubClient("token");
     await expect(client.getRequiredStatusCheckContexts("acme/shop", "main")).resolves.toEqual([
-      "classic-ci",
-      "classic-check-ci",
-      "ruleset-ci"
+      { context: "classic-check-ci" },
+      { context: "classic-ci" },
+      { context: "ruleset-ci" }
     ]);
   });
 
-  it("fails closed when a required context is pinned to a specific app source", async () => {
+  it("preserves a required context pinned to a specific app source", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
       if (url.endsWith("/repos/acme/shop/branches/main")) {
         return jsonResponse({
           protection: {
             required_status_checks: {
-              contexts: [],
+              contexts: ["trusted-ci"],
               checks: [{ context: "trusted-ci", app_id: 1234 }]
             }
           }
@@ -116,10 +116,12 @@ describe("GitHub API errors", () => {
     });
 
     const client = new GitHubClient("token");
-    await expect(client.getRequiredStatusCheckContexts("acme/shop", "main")).resolves.toBeNull();
+    await expect(client.getRequiredStatusCheckContexts("acme/shop", "main")).resolves.toEqual([
+      { context: "trusted-ci", appId: 1234 }
+    ]);
   });
 
-  it("fails closed when an active ruleset pins a required context to a specific integration", async () => {
+  it("preserves a required context pinned to a specific ruleset integration", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
       if (url.endsWith("/repos/acme/shop/branches/main")) {
@@ -139,7 +141,9 @@ describe("GitHub API errors", () => {
     });
 
     const client = new GitHubClient("token");
-    await expect(client.getRequiredStatusCheckContexts("acme/shop", "main")).resolves.toBeNull();
+    await expect(client.getRequiredStatusCheckContexts("acme/shop", "main")).resolves.toEqual([
+      { context: "trusted-ci", appId: 5678 }
+    ]);
   });
 
   it("fails closed when active ruleset metadata is unavailable", async () => {
