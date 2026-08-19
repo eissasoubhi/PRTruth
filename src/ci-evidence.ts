@@ -79,6 +79,21 @@ function genericCiScopeRequirements(text: string): GenericCiScopeRequirements | 
   if (/\bsafari\b/i.test(text)) browsers.push(matcher("safari", /\bsafari\b/i));
   if (browsers.length > 0) axes.push(browsers);
 
+  const summernoteHosts: ScopeMatcher[] = [];
+  if (/\bbootstrap\s*3\b|\bbs3\b/i.test(text)) {
+    summernoteHosts.push(matcher("bootstrap 3", /\bbootstrap\s*3\b|\bbs3\b/i));
+  }
+  if (/\bbootstrap\s*4\b|\bbs4\b/i.test(text)) {
+    summernoteHosts.push(matcher("bootstrap 4", /\bbootstrap\s*4\b|\bbs4\b/i));
+  }
+  if (/\bbootstrap\s*5\b|\bbs5\b/i.test(text)) {
+    summernoteHosts.push(matcher("bootstrap 5", /\bbootstrap\s*5\b|\bbs5\b/i));
+  }
+  if (/\bsummernote\b/i.test(text) && /\blite\b/i.test(text)) {
+    summernoteHosts.push(matcher("summernote lite", /\bsummernote\s+lite\b|\blite\b/i));
+  }
+  if (summernoteHosts.length > 0) axes.push(summernoteHosts);
+
   for (const runtime of ["node", "php", "python", "go"] as const) {
     const runtimes = runtimeMatchers(text, runtime);
     if (runtimes.length > 0) axes.push(runtimes);
