@@ -1,4 +1,5 @@
 import { collectPages } from "./pagination.js";
+import type { RequiredStatusCheck } from "./types.js";
 
 interface GitHubIssueResponse {
   number: number;
@@ -27,6 +28,9 @@ interface GitHubCheckRunResponse {
   status: string;
   conclusion: string | null;
   html_url?: string;
+  app?: {
+    id: number;
+  } | null;
 }
 
 interface GitHubCheckRunsResponse {
@@ -133,12 +137,22 @@ function apiError(response: Response, path: string): GitHubApiError {
   );
 }
 
-function hasPinnedCheckSource(appId: number | null | undefined): boolean {
-  // GitHub uses a positive app/integration identifier when a required context
-  // must come from a specific GitHub App. PRTruth currently records check names
-  // and conclusions, not the originating app identity, so such a rule cannot be
-  // proved safely yet. Non-positive/null values do not pin a specific source.
-  return typeof appId === "number" && appId > 0;
+function positiveSourceId(value: number | null | undefined): number | undefined {
+  return typeof value === "number" && value > 0 ? value : undefined;
+}
+
+function requiredCheckKey(check: RequiredStatusCheck): string {
+  return `${check.context.trim().toLowerCase()}\u0000${check.appId ?? "any"}`;
+}
+
+function dedupeRequiredChecks(checks: RequiredStatusCheck[]): RequiredStatusCheck[] {
+  const seen = new Set<string>();
+  return checks.filter((check) => {
+    const key = requiredCheckKey(check);
+    if (!check.context.trim() || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export class GitHubClient {
@@ -250,7 +264,7 @@ export class GitHubClient {
     }
   }
 
-  async getRequiredStatusCheckContexts(repository: string, branch: string): Promise<string[] | null> {
+  async getRequiredStatusCheckContexts(repository: string, branch: string): Promise<RequiredStatusCheck[] | null> {
     try {
       const encodedBranch = encodeURIComponent(branch);
       const [branchInfo, rules] = await Promise.all([
@@ -262,25 +276,39 @@ export class GitHubClient {
         )
       ]);
 
-      const contexts = new Set<string>();
+      const requiredChecks: RequiredStatusCheck[] = [];
       const classicStatusChecks = branchInfo.protection?.required_status_checks;
-      for (const context of classicStatusChecks?.contexts ?? []) {
-        if (context.trim()) contexts.add(context.trim());
-      }
-      for (const check of classicStatusChecks?.checks ?? []) {
-        if (hasPinnedCheckSource(check.app_id)) return null;
-        if (check.context.trim()) contexts.add(check.context.trim());
+      const classicChecks = classicStatusChecks?.checks ?? [];
+
+      // GitHub exposes `checks` as the source-aware form of classic required
+      // status checks. When it is present, prefer it over the legacy `contexts`
+      // list so an app-pinned requirement is not accidentally duplicated as an
+      // unpinned context.
+      if (classicChecks.length > 0) {
+        for (const check of classicChecks) {
+          const context = check.context.trim();
+          if (!context) continue;
+          const appId = positiveSourceId(check.app_id);
+          requiredChecks.push({ context, ...(appId !== undefined ? { appId } : {}) });
+        }
+      } else {
+        for (const contextValue of classicStatusChecks?.contexts ?? []) {
+          const context = contextValue.trim();
+          if (context) requiredChecks.push({ context });
+        }
       }
 
       for (const rule of rules) {
         if (rule.type !== "required_status_checks") continue;
         for (const check of rule.parameters?.required_status_checks ?? []) {
-          if (hasPinnedCheckSource(check.integration_id)) return null;
-          if (check.context.trim()) contexts.add(check.context.trim());
+          const context = check.context.trim();
+          if (!context) continue;
+          const appId = positiveSourceId(check.integration_id);
+          requiredChecks.push({ context, ...(appId !== undefined ? { appId } : {}) });
         }
       }
 
-      return [...contexts];
+      return dedupeRequiredChecks(requiredChecks);
     } catch (error) {
       // Required-check evidence must be complete before it can strengthen a
       // verdict. If either classic branch metadata or active ruleset metadata
