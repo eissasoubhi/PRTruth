@@ -42,23 +42,39 @@ describe("generic CI evidence", () => {
     expect(assessment?.status).toBe("PROVEN");
   });
 
-  it("keeps scoped generic CI claims unproven instead of using aggregate green status", () => {
+  it("proves scoped generic CI claims only when every claimed matrix lane is visible", () => {
+    const assessment = assessGenericCiSuccess("CI is green on Node 22 and Node 24", [
+      check("Node 22", "success"),
+      check("Node 24", "success")
+    ]);
+
+    expect(assessment).toMatchObject({ status: "PROVEN" });
+    expect(assessment?.reason).toContain("every claimed environment scope");
+  });
+
+  it("keeps scoped generic CI claims unproven when a claimed lane is missing", () => {
     const nodeAssessment = assessGenericCiSuccess("CI is green on Node 22 and Node 24", [
-      check("quality / Node 22", "success")
+      check("Node 22", "success")
     ]);
     const browserAssessment = assessGenericCiSuccess("Workflow passes on Chromium and Firefox", [
       check("browser / Chromium", "success")
     ]);
 
-    expect(nodeAssessment).toMatchObject({
-      status: "UNPROVEN",
-      matchedChecks: []
-    });
-    expect(nodeAssessment?.reason).toContain("named environment");
-    expect(browserAssessment).toMatchObject({
-      status: "UNPROVEN",
-      matchedChecks: []
-    });
+    expect(nodeAssessment).toMatchObject({ status: "UNPROVEN" });
+    expect(nodeAssessment?.reason).toContain("node 24");
+    expect(browserAssessment).toMatchObject({ status: "UNPROVEN" });
+    expect(browserAssessment?.reason).toContain("firefox");
+  });
+
+  it("requires Cartesian coverage for generic multi-axis CI claims", () => {
+    const assessment = assessGenericCiSuccess("CI is green on Linux and Windows with Node 22 and Node 24", [
+      check("Linux / Node 22", "success"),
+      check("Linux / Node 24", "success"),
+      check("Windows / Node 22", "success")
+    ]);
+
+    expect(assessment).toMatchObject({ status: "UNPROVEN" });
+    expect(assessment?.reason).toContain("windows + node 24");
   });
 
   it("keeps the claim unproven when a top-level check is skipped", () => {
