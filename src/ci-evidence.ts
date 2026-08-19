@@ -92,9 +92,15 @@ function genericCiScopeRequirements(text: string): GenericCiScopeRequirements | 
   }
   if (accelerators.length > 0) axes.push(accelerators);
 
-  // A specific accelerator model is stronger evidence of GPU execution than a
-  // generic "gpu" token. Do not require both strings in the observable job name.
-  if (/\bgpu\b/i.test(text) && accelerators.length === 0) {
+  const gpuBackends: ScopeMatcher[] = [];
+  if (/\bcuda\b/i.test(text)) gpuBackends.push(matcher("cuda", /\bcuda\b/i));
+  if (/\brocm\b/i.test(text)) gpuBackends.push(matcher("rocm", /\brocm\b/i));
+  if (gpuBackends.length > 0) axes.push(gpuBackends);
+
+  // A specific accelerator model or GPU backend is stronger evidence of GPU
+  // execution than a generic "gpu" token. Do not require both strings in the
+  // observable job name.
+  if (/\bgpu\b/i.test(text) && accelerators.length === 0 && gpuBackends.length === 0) {
     environment.push(matcher("gpu", /\bgpu\b/i));
   }
 
