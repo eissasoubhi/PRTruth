@@ -32,6 +32,25 @@ describe("generic CI evidence", () => {
     ]);
   });
 
+  it("keeps required-check claims unproven when non-required failures may exist", () => {
+    const assessment = assessGenericCiSuccess("All required checks are green", [
+      check("required / unit", "success"),
+      check("advisory / self-hosted GPU", "failure")
+    ]);
+
+    expect(assessment).toMatchObject({ status: "UNPROVEN" });
+    expect(assessment?.reason).toContain("required-check membership");
+  });
+
+  it("still proves a required-check claim when every observed check is green", () => {
+    const assessment = assessGenericCiSuccess("All required checks are green", [
+      check("unit", "success"),
+      check("integration", "success")
+    ]);
+
+    expect(assessment).toMatchObject({ status: "PROVEN" });
+  });
+
   it("proves a generic CI claim only when every observed top-level check succeeds", () => {
     const assessment = assessGenericCiSuccess("CI is green", [
       check("Backend", "success"),

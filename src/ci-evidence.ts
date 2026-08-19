@@ -28,6 +28,11 @@ function hasSuccessLanguage(text: string): boolean {
   return /\b(?:pass(?:es|ed)?|succeed(?:s|ed)?|success(?:ful(?:ly)?)?|green)\b/i.test(text);
 }
 
+function isRequiredChecksSuccessStatement(text: string): boolean {
+  return /\brequired\b[^.\n]{0,80}\b(?:ci|checks?|workflows?|jobs?)\b/i.test(text)
+    || /\b(?:ci|checks?|workflows?|jobs?)\b[^.\n]{0,80}\brequired\b/i.test(text);
+}
+
 function matcher(label: string, pattern: RegExp): ScopeMatcher {
   return {
     label,
@@ -171,6 +176,14 @@ export function assessGenericCiSuccess(
     FAILED_CONCLUSIONS.has(check.conclusion ?? "")
   );
   if (failed.length > 0) {
+    if (isRequiredChecksSuccessStatement(text)) {
+      return {
+        status: "UNPROVEN",
+        reason: "Observed CI includes non-successful checks, but required-check membership is not available in the current evidence.",
+        matchedChecks: topLevelChecks
+      };
+    }
+
     return {
       status: "FAILED",
       reason: `Observed top-level CI failure: ${failed.map((check) => check.name).join(", ")}.`,
