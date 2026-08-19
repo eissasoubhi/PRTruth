@@ -128,4 +128,53 @@ describe("fixture-driven verification", () => {
     });
     expect(report.claimResults?.[0]?.evidence).toHaveLength(5);
   });
+
+  it("does not let a generic green test lane prove a scoped issue requirement", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+
+      if (url.endsWith("/repos/acme/runtime/issues/8")) {
+        return jsonResponse({
+          number: 8,
+          title: "Runtime support",
+          body: "## Acceptance criteria\n- Tests pass on Node 22 and Node 24",
+          html_url: "https://github.com/acme/runtime/issues/8"
+        });
+      }
+      if (url.endsWith("/repos/acme/runtime/pulls/9")) {
+        return jsonResponse({
+          number: 9,
+          title: "Add runtime matrix",
+          body: "Closes #8",
+          html_url: "https://github.com/acme/runtime/pull/9",
+          head: { sha: "runtime123" }
+        });
+      }
+      if (url.includes("/repos/acme/runtime/pulls/9/files")) return jsonResponse([]);
+      if (url.includes("/repos/acme/runtime/commits/runtime123/check-runs")) {
+        return jsonResponse({
+          check_runs: [
+            { name: "tests / Node 22", status: "completed", conclusion: "success" }
+          ]
+        });
+      }
+      if (url.includes("/repos/acme/runtime/actions/runs?head_sha=runtime123")) {
+        return new Response("not found", { status: 404 });
+      }
+      if (url.includes("/repos/acme/runtime/contents/")) return new Response("not found", { status: 404 });
+
+      throw new Error(`Unexpected GitHub request: ${url}`);
+    });
+
+    const report = await verifyPullRequest({
+      repository: "acme/runtime",
+      issueNumber: 8,
+      prNumber: 9,
+      token: "fixture-token"
+    });
+
+    expect(report.results).toHaveLength(1);
+    expect(report.results[0]).toMatchObject({ status: "UNPROVEN" });
+    expect(report.results[0]?.reason).toContain("node 24");
+  });
 });
