@@ -73,6 +73,13 @@ function genericCiScopeRequirements(text: string): GenericCiScopeRequirements | 
   }
   if (runnerTypes.length > 0) axes.push(runnerTypes);
 
+  // Hardware/capability labels can materially change what a CI lane proves.
+  // Real self-hosted fleets commonly use `gpu` as a runner capability label;
+  // do not let a generic self-hosted success silently prove GPU execution.
+  if (/\bgpu\b/i.test(text)) {
+    environment.push(matcher("gpu", /\bgpu\b/i));
+  }
+
   const databases: ScopeMatcher[] = [];
   if (/\bpostgres(?:ql)?\b/i.test(text)) databases.push(matcher("postgres", /\bpostgres(?:ql)?\b/i));
   if (/\bmysql\b/i.test(text)) databases.push(matcher("mysql", /\bmysql\b/i));
