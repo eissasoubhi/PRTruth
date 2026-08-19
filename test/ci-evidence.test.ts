@@ -77,6 +77,50 @@ describe("generic CI evidence", () => {
     expect(assessment?.reason).toContain("windows + node 24");
   });
 
+  it("does not infer self-hosted execution from generic green jobs", () => {
+    const assessment = assessGenericCiSuccess("CI is green on self-hosted runners", [
+      check("Backend", "success"),
+      check("Frontend", "success")
+    ]);
+
+    expect(assessment).toMatchObject({ status: "UNPROVEN" });
+    expect(assessment?.reason).toContain("self-hosted");
+  });
+
+  it("proves self-hosted CI only when the runner type is visible in the job lane", () => {
+    const assessment = assessGenericCiSuccess("CI is green on self-hosted runners", [
+      check("Backend / self-hosted", "success"),
+      check("Frontend / self-hosted", "success")
+    ]);
+
+    expect(assessment).toMatchObject({ status: "PROVEN" });
+  });
+
+  it("keeps GitHub-hosted and self-hosted runner claims distinct", () => {
+    const githubHosted = assessGenericCiSuccess("CI is green on GitHub-hosted runners", [
+      check("Backend / GitHub-hosted", "success")
+    ]);
+    const wrongRunner = assessGenericCiSuccess("CI is green on self-hosted runners", [
+      check("Backend / GitHub-hosted", "success")
+    ]);
+
+    expect(githubHosted).toMatchObject({ status: "PROVEN" });
+    expect(wrongRunner).toMatchObject({ status: "UNPROVEN" });
+    expect(wrongRunner?.reason).toContain("self-hosted");
+  });
+
+  it("combines runner type with OS matrix claims", () => {
+    const assessment = assessGenericCiSuccess(
+      "CI is green on self-hosted Linux and Windows runners",
+      [
+        check("Linux / self-hosted", "success")
+      ]
+    );
+
+    expect(assessment).toMatchObject({ status: "UNPROVEN" });
+    expect(assessment?.reason).toContain("windows + self-hosted");
+  });
+
   it("does not ignore Summernote host variants when browser lanes are green", () => {
     const assessment = assessGenericCiSuccess(
       "CI is green on Summernote BS3 + BS4 + BS5 + Lite across Chromium and Firefox",

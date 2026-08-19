@@ -64,6 +64,15 @@ function genericCiScopeRequirements(text: string): GenericCiScopeRequirements | 
   if (/\bx64\b|\bx86_64\b|\bamd64\b/i.test(text)) architectures.push(matcher("x64", /\bx64\b|\bx86_64\b|\bamd64\b/i));
   if (architectures.length > 0) axes.push(architectures);
 
+  const runnerTypes: ScopeMatcher[] = [];
+  if (/\bself[- ]hosted\b/i.test(text)) {
+    runnerTypes.push(matcher("self-hosted", /\bself[- ]hosted\b/i));
+  }
+  if (/\bgithub[- ]hosted\b/i.test(text)) {
+    runnerTypes.push(matcher("github-hosted", /\bgithub[- ]hosted\b/i));
+  }
+  if (runnerTypes.length > 0) axes.push(runnerTypes);
+
   const databases: ScopeMatcher[] = [];
   if (/\bpostgres(?:ql)?\b/i.test(text)) databases.push(matcher("postgres", /\bpostgres(?:ql)?\b/i));
   if (/\bmysql\b/i.test(text)) databases.push(matcher("mysql", /\bmysql\b/i));
