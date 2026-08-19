@@ -10,14 +10,15 @@ describe("workflow checkout hardening", () => {
     ".github/workflows/ci.yml",
     ".github/workflows/action-smoke.yml",
     ".github/workflows/dogfood.yml",
+    ".github/workflows/github-rules-smoke.yml",
     ".github/workflows/release.yml",
     ".github/workflows/npm-publish.yml"
   ]) {
-    it(`${path} uses checkout v6 without persisting credentials`, () => {
+    it(`${path} uses checkout v7 without persisting credentials`, () => {
       const content = workflow(path);
 
-      expect(content).toContain("uses: actions/checkout@v6");
-      expect(content).not.toContain("uses: actions/checkout@v4");
+      expect(content).toContain("uses: actions/checkout@v7");
+      expect(content).not.toContain("uses: actions/checkout@v6");
       expect(content).toContain("persist-credentials: false");
     });
   }
@@ -25,14 +26,15 @@ describe("workflow checkout hardening", () => {
   for (const path of [
     ".github/workflows/ci.yml",
     ".github/workflows/dogfood.yml",
+    ".github/workflows/github-rules-smoke.yml",
     ".github/workflows/release.yml",
     ".github/workflows/npm-publish.yml"
   ]) {
-    it(`${path} uses setup-node v6 with implicit package-manager caching disabled`, () => {
+    it(`${path} uses setup-node v7 with implicit package-manager caching disabled`, () => {
       const content = workflow(path);
 
-      expect(content).toContain("uses: actions/setup-node@v6");
-      expect(content).not.toContain("uses: actions/setup-node@v4");
+      expect(content).toContain("uses: actions/setup-node@v7");
+      expect(content).not.toContain("uses: actions/setup-node@v6");
       expect(content).toContain("package-manager-cache: false");
     });
 
@@ -61,6 +63,7 @@ describe("workflow checkout hardening", () => {
       ".github/workflows/ci.yml",
       ".github/workflows/action-smoke.yml",
       ".github/workflows/dogfood.yml",
+      ".github/workflows/github-rules-smoke.yml",
       ".github/workflows/npm-publish.yml"
     ]) {
       expect(workflow(path)).toContain("permissions:\n  contents: read");
