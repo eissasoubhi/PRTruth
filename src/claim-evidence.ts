@@ -13,7 +13,7 @@ export interface ClaimEvidenceAssessment {
 }
 
 type CheckCategory = "install" | "test" | "lint" | "type" | "build";
-type StaticScopeToken = "windows" | "macos" | "linux" | "arm64" | "x64";
+type StaticScopeToken = "windows" | "macos" | "linux" | "arm64" | "x64" | "postgres" | "mysql" | "sqlite" | "mariadb";
 type RuntimeScopeToken = `node:${string}` | `php:${string}` | `python:${string}` | `go:${string}`;
 type ScopeToken = StaticScopeToken | RuntimeScopeToken;
 
@@ -73,6 +73,10 @@ function claimScopes(claim: string): ScopeToken[] {
   if (/\blinux\b/i.test(claim)) scopes.push("linux");
   if (/\barm64\b|\baarch64\b/i.test(claim)) scopes.push("arm64");
   if (/\bx64\b|\bx86_64\b|\bamd64\b/i.test(claim)) scopes.push("x64");
+  if (/\bpostgres(?:ql)?\b/i.test(claim)) scopes.push("postgres");
+  if (/\bmysql\b/i.test(claim)) scopes.push("mysql");
+  if (/\bsqlite(?:3)?\b/i.test(claim)) scopes.push("sqlite");
+  if (/\bmariadb\b/i.test(claim)) scopes.push("mariadb");
   scopes.push(...runtimeScopes(claim));
   return scopes;
 }
@@ -98,7 +102,11 @@ function checkMatchesScope(check: CheckRunSummary, scope: ScopeToken): boolean {
   if (scope === "macos") return /\bmacos\b|\bmac os\b|\bosx\b|\bdarwin\b/.test(name);
   if (scope === "linux") return /\blinux\b/.test(name);
   if (scope === "arm64") return /\barm64\b|\baarch64\b/.test(name);
-  return /\bx64\b|\bx86_64\b|\bamd64\b/.test(name);
+  if (scope === "x64") return /\bx64\b|\bx86_64\b|\bamd64\b/.test(name);
+  if (scope === "postgres") return /\bpostgres(?:ql)?\b/.test(name);
+  if (scope === "mysql") return /\bmysql\b/.test(name);
+  if (scope === "sqlite") return /\bsqlite(?:3)?\b/.test(name);
+  return /\bmariadb\b/.test(name);
 }
 
 function checkMatchesCategory(check: CheckRunSummary, category: CheckCategory): boolean {
