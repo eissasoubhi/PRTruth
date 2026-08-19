@@ -1,6 +1,6 @@
 {
   "name": "prtruth",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Verify GitHub pull requests against issue acceptance criteria using deterministic evidence from CI, diffs, and repository artifacts.",
   "type": "module",
   "bin": {
