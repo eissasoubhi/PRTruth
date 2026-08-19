@@ -18,6 +18,11 @@ function hasSuccessLanguage(text: string): boolean {
   return /\b(?:pass(?:es|ed)?|succeed(?:s|ed)?|success(?:ful(?:ly)?)?|green)\b/i.test(text);
 }
 
+function hasExplicitEnvironmentScope(text: string): boolean {
+  return /\b(?:windows|win32|macos|mac os|osx|darwin|linux|arm64|aarch64|x64|x86_64|amd64|postgres(?:ql)?|mysql|sqlite3?|mariadb|chromium|chrome|google chrome|firefox|webkit|safari|redis|rabbitmq|rabbit mq|kafka|apache kafka|elasticsearch|elastic search)\b/i.test(text)
+    || /\b(?:node(?:\.js)?|nodejs|php|python|go)\s*v?\d+(?:\.\d+){0,2}\b/i.test(text);
+}
+
 export function isGenericCiSuccessStatement(text: string): boolean {
   return hasSuccessLanguage(text)
     && /\b(?:ci|continuous integration|workflow|checks?)\b/i.test(text);
@@ -61,6 +66,17 @@ export function assessGenericCiSuccess(
       status: "UNPROVEN",
       reason: `Top-level CI has not completed: ${incomplete.map((check) => check.name).join(", ")}.`,
       matchedChecks: topLevelChecks
+    };
+  }
+
+  // Aggregate success can prove a truly generic statement such as "CI is green".
+  // It cannot prove an explicit runtime/browser/OS/etc. scope that is not tied
+  // to matching observable checks. Keep that stronger statement conservative.
+  if (hasExplicitEnvironmentScope(text)) {
+    return {
+      status: "UNPROVEN",
+      reason: "A scoped CI-success claim requires evidence for the named environment, not only aggregate CI status.",
+      matchedChecks: []
     };
   }
 

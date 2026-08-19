@@ -42,6 +42,25 @@ describe("generic CI evidence", () => {
     expect(assessment?.status).toBe("PROVEN");
   });
 
+  it("keeps scoped generic CI claims unproven instead of using aggregate green status", () => {
+    const nodeAssessment = assessGenericCiSuccess("CI is green on Node 22 and Node 24", [
+      check("quality / Node 22", "success")
+    ]);
+    const browserAssessment = assessGenericCiSuccess("Workflow passes on Chromium and Firefox", [
+      check("browser / Chromium", "success")
+    ]);
+
+    expect(nodeAssessment).toMatchObject({
+      status: "UNPROVEN",
+      matchedChecks: []
+    });
+    expect(nodeAssessment?.reason).toContain("named environment");
+    expect(browserAssessment).toMatchObject({
+      status: "UNPROVEN",
+      matchedChecks: []
+    });
+  });
+
   it("keeps the claim unproven when a top-level check is skipped", () => {
     const assessment = assessGenericCiSuccess("The workflow completes successfully", [
       check("Backend", "success"),
