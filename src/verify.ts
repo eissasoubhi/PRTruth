@@ -10,7 +10,13 @@ import { GitHubClient } from "./github.js";
 import { discoverInstructionFiles } from "./instructions.js";
 import { resolveIssueNumber } from "./linked-issue.js";
 import { extractRequirements } from "./requirements.js";
-import type { CheckRunSummary, Requirement, RequirementResult, VerificationReport } from "./types.js";
+import type {
+  CheckRunSummary,
+  Requirement,
+  RequirementResult,
+  RequiredStatusCheck,
+  VerificationReport
+} from "./types.js";
 
 const STOP_WORDS = new Set([
   "the", "and", "for", "with", "that", "this", "from", "into", "when", "then", "must", "should",
@@ -66,7 +72,7 @@ function evaluateRequirement(
   requirement: Requirement,
   files: PatchFile[],
   checks: CheckRunSummary[],
-  requiredCheckContexts: string[] | null
+  requiredCheckContexts: RequiredStatusCheck[] | null
 ): RequirementResult {
   const category = checkCategory(requirement.text);
   if (category) {
@@ -161,7 +167,8 @@ export async function verifyPullRequest(input: {
       status: check.status,
       conclusion: check.conclusion,
       scope: "check" as const,
-      ...(check.html_url ? { htmlUrl: check.html_url } : {})
+      ...(check.html_url ? { htmlUrl: check.html_url } : {}),
+      ...(check.app?.id ? { appId: check.app.id } : {})
     })),
     ...workflowStepChecks.map((check) => ({
       name: check.name,
