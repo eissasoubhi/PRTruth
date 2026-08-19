@@ -14,15 +14,16 @@ export interface ClaimEvidenceAssessment {
 
 type CheckCategory = "install" | "test" | "lint" | "type" | "build";
 type DatabaseScopeToken = "postgres" | "mysql" | "sqlite" | "mariadb";
+type DatabaseVersionScopeToken = `db:${DatabaseScopeToken}:${string}`;
 type BrowserScopeToken = "chromium" | "chrome" | "firefox" | "webkit" | "safari";
 type OperatingSystemScopeToken = "windows" | "macos" | "linux";
 type ArchitectureScopeToken = "arm64" | "x64";
 type ServiceScopeToken = "redis" | "rabbitmq" | "kafka" | "elasticsearch";
 type RuntimeFamily = "node" | "php" | "python" | "go";
 type RuntimeScopeToken = `${RuntimeFamily}:${string}`;
-type MatrixScopeToken = DatabaseScopeToken | BrowserScopeToken | OperatingSystemScopeToken | ArchitectureScopeToken | RuntimeScopeToken;
+type MatrixScopeToken = DatabaseScopeToken | DatabaseVersionScopeToken | BrowserScopeToken | OperatingSystemScopeToken | ArchitectureScopeToken | RuntimeScopeToken;
 type StaticScopeToken = OperatingSystemScopeToken | ArchitectureScopeToken | DatabaseScopeToken | BrowserScopeToken | ServiceScopeToken;
-type ScopeToken = StaticScopeToken | RuntimeScopeToken;
+type ScopeToken = StaticScopeToken | DatabaseVersionScopeToken | RuntimeScopeToken;
 
 const FAILED_CONCLUSIONS = new Set([
   "failure",
@@ -78,6 +79,29 @@ function runtimeScopes(claim: string): RuntimeScopeToken[] {
   return scopes;
 }
 
+function databaseVersionScopes(claim: string): DatabaseVersionScopeToken[] {
+  const scopes: DatabaseVersionScopeToken[] = [];
+  const definitions = [
+    { database: "postgres", pattern: /\b(?:postgres(?:ql)?|pg)\s*v?(\d+(?:\.\d+){0,2})\b/gi },
+    { database: "mysql", pattern: /\bmysql\s*v?(\d+(?:\.\d+){0,2})\b/gi },
+    { database: "mariadb", pattern: /\bmariadb\s*v?(\d+(?:\.\d+){0,2})\b/gi },
+    { database: "sqlite", pattern: /\bsqlite(?:3)?\s*v?(\d+(?:\.\d+){0,2})\b/gi }
+  ] as const;
+
+  for (const { database, pattern } of definitions) {
+    for (const match of claim.matchAll(pattern)) {
+      const version = match[1];
+      if (version) scopes.push(`db:${database}:${version}` as DatabaseVersionScopeToken);
+    }
+  }
+
+  return scopes;
+}
+
+function databaseVersionFamilies(scopes: DatabaseVersionScopeToken[]): Set<DatabaseScopeToken> {
+  return new Set(scopes.map((scope) => scope.split(":", 3)[1] as DatabaseScopeToken));
+}
+
 function claimScopes(claim: string): ScopeToken[] {
   const scopes: ScopeToken[] = [];
   if (/\bwindows\b|\bwin32\b/i.test(claim)) scopes.push("windows");
@@ -85,10 +109,15 @@ function claimScopes(claim: string): ScopeToken[] {
   if (/\blinux\b/i.test(claim)) scopes.push("linux");
   if (/\barm64\b|\baarch64\b/i.test(claim)) scopes.push("arm64");
   if (/\bx64\b|\bx86_64\b|\bamd64\b/i.test(claim)) scopes.push("x64");
-  if (/\bpostgres(?:ql)?\b/i.test(claim)) scopes.push("postgres");
-  if (/\bmysql\b/i.test(claim)) scopes.push("mysql");
-  if (/\bsqlite(?:3)?\b/i.test(claim)) scopes.push("sqlite");
-  if (/\bmariadb\b/i.test(claim)) scopes.push("mariadb");
+
+  const databaseVersions = databaseVersionScopes(claim);
+  const versionedFamilies = databaseVersionFamilies(databaseVersions);
+  if (/\bpostgres(?:ql)?\b|\bpg\b/i.test(claim) && !versionedFamilies.has("postgres")) scopes.push("postgres");
+  if (/\bmysql\b/i.test(claim) && !versionedFamilies.has("mysql")) scopes.push("mysql");
+  if (/\bsqlite(?:3)?\b/i.test(claim) && !versionedFamilies.has("sqlite")) scopes.push("sqlite");
+  if (/\bmariadb\b/i.test(claim) && !versionedFamilies.has("mariadb")) scopes.push("mariadb");
+  scopes.push(...databaseVersions);
+
   if (/\bchromium\b/i.test(claim)) scopes.push("chromium");
   if (/\bchrome\b|\bgoogle chrome\b/i.test(claim)) scopes.push("chrome");
   if (/\bfirefox\b/i.test(claim)) scopes.push("firefox");
@@ -106,6 +135,10 @@ function isDatabaseScope(scope: ScopeToken): scope is DatabaseScopeToken {
   return !scope.includes(":") && DATABASE_SCOPES.has(scope as DatabaseScopeToken);
 }
 
+function isDatabaseVersionScope(scope: ScopeToken): scope is DatabaseVersionScopeToken {
+  return scope.startsWith("db:");
+}
+
 function isBrowserScope(scope: ScopeToken): scope is BrowserScopeToken {
   return !scope.includes(":") && BROWSER_SCOPES.has(scope as BrowserScopeToken);
 }
@@ -119,7 +152,7 @@ function isArchitectureScope(scope: ScopeToken): scope is ArchitectureScopeToken
 }
 
 function isRuntimeScope(scope: ScopeToken): scope is RuntimeScopeToken {
-  return scope.includes(":");
+  return /^(?:node|php|python|go):/.test(scope);
 }
 
 function runtimeFamily(scope: RuntimeScopeToken): RuntimeFamily {
@@ -150,15 +183,24 @@ function runtimeScopeMatches(name: string, scope: RuntimeScopeToken): boolean {
   return new RegExp(`\\b${runtimePattern}\\s*v?${versionPattern}(?:\\b|\\.)`, "i").test(name);
 }
 
+function databaseVersionScopeMatches(name: string, scope: DatabaseVersionScopeToken): boolean {
+  const [, database, version] = scope.split(":", 3);
+  if (!database || !version) return false;
+  const databasePattern = database === "postgres" ? "(?:postgres(?:ql)?|pg)" : database === "sqlite" ? "sqlite(?:3)?" : database;
+  const versionPattern = escapeRegex(version).replace(/\\\./g, "\\.");
+  return new RegExp(`\\b${databasePattern}\\s*v?${versionPattern}(?:\\b|\\.)`, "i").test(name);
+}
+
 function checkMatchesScope(check: CheckRunSummary, scope: ScopeToken): boolean {
   const name = check.name.toLowerCase();
-  if (scope.includes(":")) return runtimeScopeMatches(name, scope as RuntimeScopeToken);
+  if (isDatabaseVersionScope(scope)) return databaseVersionScopeMatches(name, scope);
+  if (isRuntimeScope(scope)) return runtimeScopeMatches(name, scope);
   if (scope === "windows") return /\bwindows\b|\bwin32\b/.test(name);
   if (scope === "macos") return /\bmacos\b|\bmac os\b|\bosx\b|\bdarwin\b/.test(name);
   if (scope === "linux") return /\blinux\b/.test(name);
   if (scope === "arm64") return /\barm64\b|\baarch64\b/.test(name);
   if (scope === "x64") return /\bx64\b|\bx86_64\b|\bamd64\b/.test(name);
-  if (scope === "postgres") return /\bpostgres(?:ql)?\b/.test(name);
+  if (scope === "postgres") return /\bpostgres(?:ql)?\b|\bpg\b/.test(name);
   if (scope === "mysql") return /\bmysql\b/.test(name);
   if (scope === "sqlite") return /\bsqlite(?:3)?\b/.test(name);
   if (scope === "mariadb") return /\bmariadb\b/.test(name);
@@ -219,7 +261,7 @@ function categoryLabel(categories: CheckCategory[]): string {
 }
 
 function scopeLabel(scopes: ScopeToken[]): string {
-  return scopes.map((scope) => scope.replace(":", " ")).join(", ");
+  return scopes.map((scope) => scope.replaceAll(":", " ")).join(", ");
 }
 
 function claimTerms(text: string): string[] {
@@ -245,7 +287,9 @@ function relevantChangedFiles(claim: string, changedFiles: string[]): string[] {
 }
 
 function matrixScopeCombinations(scopes: ScopeToken[]): MatrixScopeToken[][] {
-  const databases = scopes.filter(isDatabaseScope);
+  const databases = scopes.filter((scope): scope is DatabaseScopeToken | DatabaseVersionScopeToken =>
+    isDatabaseScope(scope) || isDatabaseVersionScope(scope)
+  );
   const browsers = scopes.filter(isBrowserScope);
   const operatingSystems = scopes.filter(isOperatingSystemScope);
   const architectures = scopes.filter(isArchitectureScope);
@@ -313,6 +357,7 @@ export function assessCompletionClaim(
   const runtimeMatrices = runtimeMatrixScopes(scopes);
   const matrixScopes = scopes.filter((scope) =>
     isDatabaseScope(scope)
+    || isDatabaseVersionScope(scope)
     || isBrowserScope(scope)
     || isOperatingSystemScope(scope)
     || isArchitectureScope(scope)
