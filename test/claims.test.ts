@@ -129,6 +129,23 @@ Typecheck failed on the self-hosted runner.
     ]);
   });
 
+  it("rejects queued, cancelled, timed-out, blocked, and running validation states", () => {
+    const claims = extractCompletionClaims(`
+## Validation
+- [x] Backend tests queued on ARM64.
+- Frontend tests cancelled after the runner disconnected.
+- Typecheck timed out in the clean container.
+- Build blocked on an unavailable dependency.
+- CI in progress on the current head.
+- Lint running on the self-hosted runner.
+- Unit tests pass.
+`);
+
+    expect(claims.map((claim) => claim.text)).toEqual([
+      "Unit tests pass."
+    ]);
+  });
+
   it("returns no claims for prose without explicit claim structure", () => {
     expect(extractCompletionClaims("This PR probably fixes the bug.")).toEqual([]);
   });
