@@ -58,6 +58,13 @@ describe("workflow checkout hardening", () => {
     });
   }
 
+  it("uses the current upload-artifact generation for dogfood reports", () => {
+    const content = workflow(".github/workflows/dogfood.yml");
+
+    expect(content).toContain("uses: actions/upload-artifact@v7");
+    expect(content).not.toContain("uses: actions/upload-artifact@v4");
+  });
+
   it("keeps read-only workflows on contents: read", () => {
     for (const path of [
       ".github/workflows/ci.yml",
