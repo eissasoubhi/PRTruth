@@ -16,9 +16,10 @@ type CheckCategory = "install" | "test" | "lint" | "type" | "build";
 type DatabaseScopeToken = "postgres" | "mysql" | "sqlite" | "mariadb";
 type BrowserScopeToken = "chromium" | "chrome" | "firefox" | "webkit" | "safari";
 type ServiceScopeToken = "redis" | "rabbitmq" | "kafka" | "elasticsearch";
-type MatrixScopeToken = DatabaseScopeToken | BrowserScopeToken;
-type StaticScopeToken = "windows" | "macos" | "linux" | "arm64" | "x64" | MatrixScopeToken | ServiceScopeToken;
-type RuntimeScopeToken = `node:${string}` | `php:${string}` | `python:${string}` | `go:${string}`;
+type RuntimeFamily = "node" | "php" | "python" | "go";
+type RuntimeScopeToken = `${RuntimeFamily}:${string}`;
+type MatrixScopeToken = DatabaseScopeToken | BrowserScopeToken | RuntimeScopeToken;
+type StaticScopeToken = "windows" | "macos" | "linux" | "arm64" | "x64" | DatabaseScopeToken | BrowserScopeToken | ServiceScopeToken;
 type ScopeToken = StaticScopeToken | RuntimeScopeToken;
 
 const FAILED_CONCLUSIONS = new Set([
@@ -103,6 +104,24 @@ function isDatabaseScope(scope: ScopeToken): scope is DatabaseScopeToken {
 
 function isBrowserScope(scope: ScopeToken): scope is BrowserScopeToken {
   return !scope.includes(":") && BROWSER_SCOPES.has(scope as BrowserScopeToken);
+}
+
+function isRuntimeScope(scope: ScopeToken): scope is RuntimeScopeToken {
+  return scope.includes(":");
+}
+
+function runtimeFamily(scope: RuntimeScopeToken): RuntimeFamily {
+  return scope.split(":", 1)[0] as RuntimeFamily;
+}
+
+function runtimeMatrixScopes(scopes: ScopeToken[]): RuntimeScopeToken[] {
+  const runtimes = scopes.filter(isRuntimeScope);
+  const counts = new Map<RuntimeFamily, number>();
+  for (const scope of runtimes) {
+    const family = runtimeFamily(scope);
+    counts.set(family, (counts.get(family) ?? 0) + 1);
+  }
+  return runtimes.filter((scope) => (counts.get(runtimeFamily(scope)) ?? 0) > 1);
 }
 
 function escapeRegex(value: string): string {
@@ -216,16 +235,22 @@ function relevantChangedFiles(claim: string, changedFiles: string[]): string[] {
 function matrixScopeCombinations(scopes: ScopeToken[]): MatrixScopeToken[][] {
   const databases = scopes.filter(isDatabaseScope);
   const browsers = scopes.filter(isBrowserScope);
-  const databaseOptions: Array<DatabaseScopeToken | undefined> = databases.length > 0 ? databases : [undefined];
-  const browserOptions: Array<BrowserScopeToken | undefined> = browsers.length > 0 ? browsers : [undefined];
+  const runtimeMatrices = runtimeMatrixScopes(scopes);
+  const runtimeFamilies = [...new Set(runtimeMatrices.map(runtimeFamily))];
+  const axes: MatrixScopeToken[][] = [];
 
-  const combinations: MatrixScopeToken[][] = [];
-  for (const database of databaseOptions) {
-    for (const browser of browserOptions) {
-      combinations.push([database, browser].filter((scope): scope is MatrixScopeToken => scope !== undefined));
-    }
+  if (databases.length > 0) axes.push(databases);
+  if (browsers.length > 0) axes.push(browsers);
+  for (const family of runtimeFamilies) {
+    axes.push(runtimeMatrices.filter((scope) => runtimeFamily(scope) === family));
   }
-  return combinations;
+
+  if (axes.length === 0) return [[]];
+
+  return axes.reduce<MatrixScopeToken[][]>(
+    (combinations, axis) => combinations.flatMap((combination) => axis.map((scope) => [...combination, scope])),
+    [[]]
+  );
 }
 
 export function assessCompletionClaim(
@@ -269,8 +294,11 @@ export function assessCompletionClaim(
   }
 
   const scopes = claimScopes(claim);
-  const matrixScopes = scopes.filter((scope) => isDatabaseScope(scope) || isBrowserScope(scope));
-  const environmentScopes = scopes.filter((scope) => !isDatabaseScope(scope) && !isBrowserScope(scope));
+  const runtimeMatrices = runtimeMatrixScopes(scopes);
+  const matrixScopes = scopes.filter((scope) =>
+    isDatabaseScope(scope) || isBrowserScope(scope) || runtimeMatrices.includes(scope as RuntimeScopeToken)
+  );
+  const environmentScopes = scopes.filter((scope) => !matrixScopes.includes(scope as MatrixScopeToken));
   const matrixCombinations = matrixScopeCombinations(scopes);
   const matchesByCategory = categories.map((category) => {
     const environmentMatches = checks.filter((check) =>
