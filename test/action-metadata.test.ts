@@ -6,8 +6,8 @@ const metadata = readFileSync(new URL("../action.yml", import.meta.url), "utf8")
 describe("GitHub Action metadata", () => {
   it("uses the composite action runtime and current setup-node action for Node 22", () => {
     expect(metadata).toContain("using: composite");
-    expect(metadata).toContain("actions/setup-node@v6");
-    expect(metadata).not.toContain("actions/setup-node@v4");
+    expect(metadata).toContain("actions/setup-node@v7");
+    expect(metadata).not.toContain("actions/setup-node@v6");
     expect(metadata).toContain("node-version: 22.12.0");
     expect(metadata).toContain("package-manager-cache: false");
   });
