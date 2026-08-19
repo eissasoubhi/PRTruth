@@ -62,12 +62,19 @@ function runtimeMatchers(text: string, runtime: "node" | "php" | "python" | "go"
 }
 
 function frameworkMatchers(text: string): ScopeMatcher[] {
-  return versionMatchers(
+  const rails = versionMatchers(
     text,
     "rails",
     /\b(?:rails|ruby on rails|active\s*record)\s*v?(\d+(?:\.\d+){1,3})\b/gi,
     "(?:rails|ruby on rails|active\\s*record)"
   );
+  const django = versionMatchers(
+    text,
+    "django",
+    /\bdjango\s*v?(\d+(?:\.\d+){1,2})\b/gi,
+    "django(?:\\s+compatibility)?\\s*(?:==|~=|=)?"
+  );
+  return [...rails, ...django];
 }
 
 function databaseMatchers(text: string, database: "postgres" | "mysql" | "mariadb" | "sqlite"): ScopeMatcher[] {
