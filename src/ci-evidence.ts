@@ -54,6 +54,25 @@ function runtimeMatchers(text: string, runtime: "node" | "php" | "python" | "go"
   });
 }
 
+function databaseMatchers(text: string, database: "postgres" | "mysql" | "mariadb" | "sqlite"): ScopeMatcher[] {
+  const databasePattern = database === "postgres"
+    ? "(?:postgres(?:ql)?|pg)"
+    : database === "sqlite"
+      ? "sqlite(?:3)?"
+      : database;
+  const claimPattern = new RegExp(`\\b${databasePattern}\\s*v?(\\d+(?:\\.\\d+){0,2})\\b`, "gi");
+  const versions = [...new Set([...text.matchAll(claimPattern)].map((match) => match[1]).filter(Boolean))] as string[];
+
+  if (versions.length === 0) return [];
+  return versions.map((version) => {
+    const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return matcher(
+      `${database} ${version}`,
+      new RegExp(`\\b${databasePattern}\\s*v?${escapedVersion}(?:\\b|\\.)`, "i")
+    );
+  });
+}
+
 function genericCiScopeRequirements(text: string): GenericCiScopeRequirements | null {
   const axes: ScopeMatcher[][] = [];
   const environment: ScopeMatcher[] = [];
@@ -70,12 +89,8 @@ function genericCiScopeRequirements(text: string): GenericCiScopeRequirements | 
   if (architectures.length > 0) axes.push(architectures);
 
   const runnerTypes: ScopeMatcher[] = [];
-  if (/\bself[- ]hosted\b/i.test(text)) {
-    runnerTypes.push(matcher("self-hosted", /\bself[- ]hosted\b/i));
-  }
-  if (/\bgithub[- ]hosted\b/i.test(text)) {
-    runnerTypes.push(matcher("github-hosted", /\bgithub[- ]hosted\b/i));
-  }
+  if (/\bself[- ]hosted\b/i.test(text)) runnerTypes.push(matcher("self-hosted", /\bself[- ]hosted\b/i));
+  if (/\bgithub[- ]hosted\b/i.test(text)) runnerTypes.push(matcher("github-hosted", /\bgithub[- ]hosted\b/i));
   if (runnerTypes.length > 0) axes.push(runnerTypes);
 
   const accelerators: ScopeMatcher[] = [];
@@ -97,18 +112,25 @@ function genericCiScopeRequirements(text: string): GenericCiScopeRequirements | 
   if (/\brocm\b/i.test(text)) gpuBackends.push(matcher("rocm", /\brocm\b/i));
   if (gpuBackends.length > 0) axes.push(gpuBackends);
 
-  // A specific accelerator model or GPU backend is stronger evidence of GPU
-  // execution than a generic "gpu" token. Do not require both strings in the
-  // observable job name.
   if (/\bgpu\b/i.test(text) && accelerators.length === 0 && gpuBackends.length === 0) {
     environment.push(matcher("gpu", /\bgpu\b/i));
   }
 
   const databases: ScopeMatcher[] = [];
-  if (/\bpostgres(?:ql)?\b/i.test(text)) databases.push(matcher("postgres", /\bpostgres(?:ql)?\b/i));
-  if (/\bmysql\b/i.test(text)) databases.push(matcher("mysql", /\bmysql\b/i));
-  if (/\bsqlite(?:3)?\b/i.test(text)) databases.push(matcher("sqlite", /\bsqlite(?:3)?\b/i));
-  if (/\bmariadb\b/i.test(text)) databases.push(matcher("mariadb", /\bmariadb\b/i));
+  const versionedDatabases = new Set<string>();
+  for (const database of ["postgres", "mysql", "mariadb", "sqlite"] as const) {
+    const versionMatchers = databaseMatchers(text, database);
+    if (versionMatchers.length > 0) {
+      versionedDatabases.add(database);
+      databases.push(...versionMatchers);
+    }
+  }
+  if ((/\bpostgres(?:ql)?\b|\bpg\b/i.test(text)) && !versionedDatabases.has("postgres")) {
+    databases.push(matcher("postgres", /\bpostgres(?:ql)?\b|\bpg\b/i));
+  }
+  if (/\bmysql\b/i.test(text) && !versionedDatabases.has("mysql")) databases.push(matcher("mysql", /\bmysql\b/i));
+  if (/\bsqlite(?:3)?\b/i.test(text) && !versionedDatabases.has("sqlite")) databases.push(matcher("sqlite", /\bsqlite(?:3)?\b/i));
+  if (/\bmariadb\b/i.test(text) && !versionedDatabases.has("mariadb")) databases.push(matcher("mariadb", /\bmariadb\b/i));
   if (databases.length > 0) axes.push(databases);
 
   const browsers: ScopeMatcher[] = [];
@@ -120,18 +142,10 @@ function genericCiScopeRequirements(text: string): GenericCiScopeRequirements | 
   if (browsers.length > 0) axes.push(browsers);
 
   const summernoteHosts: ScopeMatcher[] = [];
-  if (/\bbootstrap\s*3\b|\bbs3\b/i.test(text)) {
-    summernoteHosts.push(matcher("bootstrap 3", /\bbootstrap\s*3\b|\bbs3\b/i));
-  }
-  if (/\bbootstrap\s*4\b|\bbs4\b/i.test(text)) {
-    summernoteHosts.push(matcher("bootstrap 4", /\bbootstrap\s*4\b|\bbs4\b/i));
-  }
-  if (/\bbootstrap\s*5\b|\bbs5\b/i.test(text)) {
-    summernoteHosts.push(matcher("bootstrap 5", /\bbootstrap\s*5\b|\bbs5\b/i));
-  }
-  if (/\bsummernote\b/i.test(text) && /\blite\b/i.test(text)) {
-    summernoteHosts.push(matcher("summernote lite", /\bsummernote\s+lite\b|\blite\b/i));
-  }
+  if (/\bbootstrap\s*3\b|\bbs3\b/i.test(text)) summernoteHosts.push(matcher("bootstrap 3", /\bbootstrap\s*3\b|\bbs3\b/i));
+  if (/\bbootstrap\s*4\b|\bbs4\b/i.test(text)) summernoteHosts.push(matcher("bootstrap 4", /\bbootstrap\s*4\b|\bbs4\b/i));
+  if (/\bbootstrap\s*5\b|\bbs5\b/i.test(text)) summernoteHosts.push(matcher("bootstrap 5", /\bbootstrap\s*5\b|\bbs5\b/i));
+  if (/\bsummernote\b/i.test(text) && /\blite\b/i.test(text)) summernoteHosts.push(matcher("summernote lite", /\bsummernote\s+lite\b|\blite\b/i));
   if (summernoteHosts.length > 0) axes.push(summernoteHosts);
 
   for (const runtime of ["node", "php", "python", "go"] as const) {
