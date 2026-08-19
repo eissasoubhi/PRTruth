@@ -21,9 +21,10 @@ type ArchitectureScopeToken = "arm64" | "x64";
 type ServiceScopeToken = "redis" | "rabbitmq" | "kafka" | "elasticsearch";
 type RuntimeFamily = "node" | "php" | "python" | "go";
 type RuntimeScopeToken = `${RuntimeFamily}:${string}`;
-type MatrixScopeToken = DatabaseScopeToken | DatabaseVersionScopeToken | BrowserScopeToken | OperatingSystemScopeToken | ArchitectureScopeToken | RuntimeScopeToken;
+type FrameworkVersionScopeToken = `framework:spring-boot:${string}`;
+type MatrixScopeToken = DatabaseScopeToken | DatabaseVersionScopeToken | BrowserScopeToken | OperatingSystemScopeToken | ArchitectureScopeToken | RuntimeScopeToken | FrameworkVersionScopeToken;
 type StaticScopeToken = OperatingSystemScopeToken | ArchitectureScopeToken | DatabaseScopeToken | BrowserScopeToken | ServiceScopeToken;
-type ScopeToken = StaticScopeToken | DatabaseVersionScopeToken | RuntimeScopeToken;
+type ScopeToken = StaticScopeToken | DatabaseVersionScopeToken | RuntimeScopeToken | FrameworkVersionScopeToken;
 
 const FAILED_CONCLUSIONS = new Set([
   "failure",
@@ -98,6 +99,15 @@ function databaseVersionScopes(claim: string): DatabaseVersionScopeToken[] {
   return scopes;
 }
 
+function springBootVersionScopes(claim: string): FrameworkVersionScopeToken[] {
+  const scopes: FrameworkVersionScopeToken[] = [];
+  for (const match of claim.matchAll(/\bspring\s+boot\s*v?(\d+(?:\.\d+){1,2})\b/gi)) {
+    const version = match[1];
+    if (version) scopes.push(`framework:spring-boot:${version}`);
+  }
+  return scopes;
+}
+
 function databaseVersionFamilies(scopes: DatabaseVersionScopeToken[]): Set<DatabaseScopeToken> {
   return new Set(scopes.map((scope) => scope.split(":", 3)[1] as DatabaseScopeToken));
 }
@@ -127,6 +137,7 @@ function claimScopes(claim: string): ScopeToken[] {
   if (/\brabbitmq\b|\brabbit mq\b/i.test(claim)) scopes.push("rabbitmq");
   if (/\bkafka\b|\bapache kafka\b/i.test(claim)) scopes.push("kafka");
   if (/\belasticsearch\b|\belastic search\b/i.test(claim)) scopes.push("elasticsearch");
+  scopes.push(...springBootVersionScopes(claim));
   scopes.push(...runtimeScopes(claim));
   return scopes;
 }
@@ -137,6 +148,10 @@ function isDatabaseScope(scope: ScopeToken): scope is DatabaseScopeToken {
 
 function isDatabaseVersionScope(scope: ScopeToken): scope is DatabaseVersionScopeToken {
   return scope.startsWith("db:");
+}
+
+function isFrameworkVersionScope(scope: ScopeToken): scope is FrameworkVersionScopeToken {
+  return scope.startsWith("framework:spring-boot:");
 }
 
 function isBrowserScope(scope: ScopeToken): scope is BrowserScopeToken {
@@ -191,9 +206,17 @@ function databaseVersionScopeMatches(name: string, scope: DatabaseVersionScopeTo
   return new RegExp(`\\b${databasePattern}\\s*v?${versionPattern}(?:\\b|\\.)`, "i").test(name);
 }
 
+function frameworkVersionScopeMatches(name: string, scope: FrameworkVersionScopeToken): boolean {
+  const version = scope.split(":", 3)[2];
+  if (!version) return false;
+  const versionPattern = escapeRegex(version).replace(/\\\./g, "\\.");
+  return new RegExp(`\\bspring\\s+boot\\s*v?${versionPattern}(?:\\b|\\.)`, "i").test(name);
+}
+
 function checkMatchesScope(check: CheckRunSummary, scope: ScopeToken): boolean {
   const name = check.name.toLowerCase();
   if (isDatabaseVersionScope(scope)) return databaseVersionScopeMatches(name, scope);
+  if (isFrameworkVersionScope(scope)) return frameworkVersionScopeMatches(name, scope);
   if (isRuntimeScope(scope)) return runtimeScopeMatches(name, scope);
   if (scope === "windows") return /\bwindows\b|\bwin32\b/.test(name);
   if (scope === "macos") return /\bmacos\b|\bmac os\b|\bosx\b|\bdarwin\b/.test(name);
@@ -293,6 +316,7 @@ function matrixScopeCombinations(scopes: ScopeToken[]): MatrixScopeToken[][] {
   const browsers = scopes.filter(isBrowserScope);
   const operatingSystems = scopes.filter(isOperatingSystemScope);
   const architectures = scopes.filter(isArchitectureScope);
+  const frameworks = scopes.filter(isFrameworkVersionScope);
   const runtimeMatrices = runtimeMatrixScopes(scopes);
   const runtimeFamilies = [...new Set(runtimeMatrices.map(runtimeFamily))];
   const axes: MatrixScopeToken[][] = [];
@@ -301,6 +325,7 @@ function matrixScopeCombinations(scopes: ScopeToken[]): MatrixScopeToken[][] {
   if (browsers.length > 0) axes.push(browsers);
   if (operatingSystems.length > 0) axes.push(operatingSystems);
   if (architectures.length > 0) axes.push(architectures);
+  if (frameworks.length > 0) axes.push(frameworks);
   for (const family of runtimeFamilies) {
     axes.push(runtimeMatrices.filter((scope) => runtimeFamily(scope) === family));
   }
@@ -361,6 +386,7 @@ export function assessCompletionClaim(
     || isBrowserScope(scope)
     || isOperatingSystemScope(scope)
     || isArchitectureScope(scope)
+    || isFrameworkVersionScope(scope)
     || runtimeMatrices.includes(scope as RuntimeScopeToken)
   );
   const environmentScopes = scopes.filter((scope) => !matrixScopes.includes(scope as MatrixScopeToken));

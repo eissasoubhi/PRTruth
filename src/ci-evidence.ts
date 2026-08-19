@@ -74,7 +74,13 @@ function frameworkMatchers(text: string): ScopeMatcher[] {
     /\bdjango\s*v?(\d+(?:\.\d+){1,2})\b/gi,
     "django(?:\\s+compatibility)?\\s*(?:==|~=|=)?"
   );
-  return [...rails, ...django];
+  const springBoot = versionMatchers(
+    text,
+    "spring boot",
+    /\bspring\s+boot\s*v?(\d+(?:\.\d+){1,2})\b/gi,
+    "spring\\s+boot"
+  );
+  return [...rails, ...django, ...springBoot];
 }
 
 function databaseMatchers(text: string, database: "postgres" | "mysql" | "mariadb" | "sqlite"): ScopeMatcher[] {
