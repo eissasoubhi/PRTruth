@@ -6,9 +6,8 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing GitHub release tag to publish (for example v0.1.0)
+        description: Existing published GitHub release tag (for example v0.1.8)
         required: true
-        default: v0.1.0
 
 permissions:
   contents: read
@@ -39,6 +38,22 @@ jobs:
             exit 1
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate manual publish release exists
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/github-script@v7
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        with:
+          script: |
+            const tag = process.env.RELEASE_TAG;
+            const { owner, repo } = context.repo;
+            const release = await github.rest.repos.getReleaseByTag({ owner, repo, tag });
+            if (release.data.draft) {
+              core.setFailed(`Release ${tag} is still a draft; publish it on GitHub before publishing npm.`);
+              return;
+            }
+            core.info(`Manual npm publish is authorized by published GitHub release ${release.data.html_url}`);
 
       - name: Checkout release tag
         uses: actions/checkout@v4
