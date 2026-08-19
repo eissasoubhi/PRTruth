@@ -27,6 +27,29 @@ describe("scoped CI completion claims", () => {
     expect(assessment.matchedChecks.map((item) => item.name)).toEqual(["build / windows"]);
   });
 
+  it("proves a multi-OS claim from separate matrix jobs", () => {
+    const assessment = assessCompletionClaim("Tests pass on Linux and Windows", [
+      check("tests / linux", "success"),
+      check("tests / windows", "success")
+    ]);
+
+    expect(assessment.status).toBe("PROVEN");
+    expect(assessment.matchedChecks.map((item) => item.name)).toEqual([
+      "tests / windows",
+      "tests / linux"
+    ]);
+  });
+
+  it("keeps a multi-OS claim unproven when one matrix platform is missing", () => {
+    const assessment = assessCompletionClaim("Tests pass on Linux and Windows", [
+      check("tests / linux", "success")
+    ]);
+
+    expect(assessment.status).toBe("UNPROVEN");
+    expect(assessment.reason).toContain("windows");
+    expect(assessment.matchedChecks.map((item) => item.name)).toEqual(["tests / linux"]);
+  });
+
   it("requires every declared architecture and operating-system scope", () => {
     const assessment = assessCompletionClaim("Tests pass on Linux ARM64", [
       check("tests / linux x64", "success"),
@@ -35,6 +58,24 @@ describe("scoped CI completion claims", () => {
 
     expect(assessment.status).toBe("PROVEN");
     expect(assessment.matchedChecks.map((item) => item.name)).toEqual(["tests / linux arm64"]);
+  });
+
+  it("requires the Cartesian product for OS and architecture matrices", () => {
+    const complete = assessCompletionClaim("Tests pass on Linux and Windows on ARM64 and x64", [
+      check("tests / linux arm64", "success"),
+      check("tests / linux x64", "success"),
+      check("tests / windows arm64", "success"),
+      check("tests / windows x64", "success")
+    ]);
+    const incomplete = assessCompletionClaim("Tests pass on Linux and Windows on ARM64 and x64", [
+      check("tests / linux arm64", "success"),
+      check("tests / linux x64", "success"),
+      check("tests / windows x64", "success")
+    ]);
+
+    expect(complete.status).toBe("PROVEN");
+    expect(incomplete.status).toBe("UNPROVEN");
+    expect(incomplete.matchedChecks).toHaveLength(3);
   });
 
   it("keeps an architecture-scoped claim unproven when check names omit the architecture", () => {
