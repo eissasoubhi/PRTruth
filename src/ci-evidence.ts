@@ -148,6 +148,93 @@ function missingScopeCombinations(
     ]);
 }
 
+function normalizeCheckName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function assessConfiguredRequiredChecks(
+  checks: CheckRunSummary[],
+  requiredCheckContexts: string[] | null
+): CiEvidenceAssessment {
+  if (requiredCheckContexts === null) {
+    return {
+      status: "UNPROVEN",
+      reason: "Required-check membership and completeness are not available in the current evidence.",
+      matchedChecks: checks
+    };
+  }
+
+  if (requiredCheckContexts.length === 0) {
+    return {
+      status: "UNPROVEN",
+      reason: "No required status checks are configured for the pull request base branch.",
+      matchedChecks: []
+    };
+  }
+
+  const requiredContexts = [...new Set(requiredCheckContexts.map((context) => context.trim()).filter(Boolean))];
+  const matchedChecks = checks.filter((check) =>
+    requiredContexts.some((context) => normalizeCheckName(context) === normalizeCheckName(check.name))
+  );
+  const missingContexts = requiredContexts.filter((context) =>
+    !matchedChecks.some((check) => normalizeCheckName(check.name) === normalizeCheckName(context))
+  );
+
+  if (missingContexts.length > 0) {
+    return {
+      status: "UNPROVEN",
+      reason: `Required status checks were not observed on the pull request head: ${missingContexts.join(", ")}.`,
+      matchedChecks
+    };
+  }
+
+  for (const context of requiredContexts) {
+    const contextChecks = matchedChecks.filter(
+      (check) => normalizeCheckName(check.name) === normalizeCheckName(context)
+    );
+    const incomplete = contextChecks.find(
+      (check) => check.status !== "completed" || check.conclusion === null
+    );
+    if (incomplete) {
+      return {
+        status: "UNPROVEN",
+        reason: `Required status check has not completed: ${context}.`,
+        matchedChecks
+      };
+    }
+
+    const successes = contextChecks.filter((check) => check.conclusion === "success");
+    const failures = contextChecks.filter((check) => FAILED_CONCLUSIONS.has(check.conclusion ?? ""));
+    if (successes.length > 0 && failures.length > 0) {
+      return {
+        status: "UNPROVEN",
+        reason: `Conflicting observations exist for required status check: ${context}.`,
+        matchedChecks
+      };
+    }
+    if (failures.length > 0) {
+      return {
+        status: "FAILED",
+        reason: `A required status check failed: ${context}.`,
+        matchedChecks
+      };
+    }
+    if (successes.length !== contextChecks.length) {
+      return {
+        status: "UNPROVEN",
+        reason: `Required status check did not provide a definitive success result: ${context}.`,
+        matchedChecks
+      };
+    }
+  }
+
+  return {
+    status: "PROVEN",
+    reason: "Every configured required status check was observed and completed successfully.",
+    matchedChecks
+  };
+}
+
 export function isGenericCiSuccessStatement(text: string): boolean {
   return hasSuccessLanguage(text)
     && /\b(?:ci|continuous integration|workflow|checks?)\b/i.test(text);
@@ -155,7 +242,8 @@ export function isGenericCiSuccessStatement(text: string): boolean {
 
 export function assessGenericCiSuccess(
   text: string,
-  checks: CheckRunSummary[]
+  checks: CheckRunSummary[],
+  requiredCheckContexts: string[] | null = null
 ): CiEvidenceAssessment | null {
   if (!isGenericCiSuccessStatement(text)) return null;
 
@@ -173,18 +261,14 @@ export function assessGenericCiSuccess(
     };
   }
 
+  if (requiredChecksClaim) {
+    return assessConfiguredRequiredChecks(topLevelChecks, requiredCheckContexts);
+  }
+
   const failed = topLevelChecks.filter((check) =>
     FAILED_CONCLUSIONS.has(check.conclusion ?? "")
   );
   if (failed.length > 0) {
-    if (requiredChecksClaim) {
-      return {
-        status: "UNPROVEN",
-        reason: "Observed CI includes non-successful checks, but required-check membership and completeness are not available in the current evidence.",
-        matchedChecks: topLevelChecks
-      };
-    }
-
     return {
       status: "FAILED",
       reason: `Observed top-level CI failure: ${failed.map((check) => check.name).join(", ")}.`,
@@ -199,17 +283,6 @@ export function assessGenericCiSuccess(
     return {
       status: "UNPROVEN",
       reason: `Top-level CI has not completed: ${incomplete.map((check) => check.name).join(", ")}.`,
-      matchedChecks: topLevelChecks
-    };
-  }
-
-  // Without branch-protection/ruleset metadata, a green observed set cannot
-  // prove that every required check was observed. A required check may be
-  // expected but absent from the check-run evidence entirely.
-  if (requiredChecksClaim) {
-    return {
-      status: "UNPROVEN",
-      reason: "Observed CI checks are successful, but required-check membership and completeness are not available in the current evidence.",
       matchedChecks: topLevelChecks
     };
   }
