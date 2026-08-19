@@ -72,6 +72,19 @@ Typecheck failed on the self-hosted runner.
     ]);
   });
 
+  it("does not turn mixed success and failure reports into completion claims", () => {
+    const claims = extractCompletionClaims(`
+## Validation
+- Tests passed before the dependency update, but the current build failed.
+- CI was green yesterday; frontend tests are failing now.
+- Lint passes on the current head.
+`);
+
+    expect(claims.map((claim) => claim.text)).toEqual([
+      "Lint passes on the current head."
+    ]);
+  });
+
   it("does not turn negated validation success language into completion claims", () => {
     const claims = extractCompletionClaims(`
 ## Validation
