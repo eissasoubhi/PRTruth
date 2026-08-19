@@ -146,6 +146,23 @@ Typecheck failed on the self-hosted runner.
     ]);
   });
 
+  it("rejects degraded and incomplete validation success reports", () => {
+    const claims = extractCompletionClaims(`
+## Validation
+- [x] CI is flaky on the current head.
+- Build is unstable on ARM64.
+- Typecheck result is inconclusive.
+- Tests partially pass.
+- Most tests pass.
+- Tests pass except on Windows.
+- Lint passes.
+`);
+
+    expect(claims.map((claim) => claim.text)).toEqual([
+      "Lint passes."
+    ]);
+  });
+
   it("returns no claims for prose without explicit claim structure", () => {
     expect(extractCompletionClaims("This PR probably fixes the bug.")).toEqual([]);
   });
