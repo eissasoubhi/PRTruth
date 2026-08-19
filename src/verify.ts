@@ -32,6 +32,11 @@ function hasSuccessLanguage(text: string): boolean {
   return /\b(?:pass(?:es|ed)?|succeed(?:s|ed)?|success(?:ful(?:ly)?)?|green|complete(?:s|d)?)\b/i.test(text);
 }
 
+function isRequiredChecksSuccessStatement(text: string): boolean {
+  return /\brequired\b[^.\n]{0,80}\b(?:ci|checks?|workflows?|jobs?)\b/i.test(text)
+    || /\b(?:ci|checks?|workflows?|jobs?)\b[^.\n]{0,80}\brequired\b/i.test(text);
+}
+
 function checkCategory(text: string): string | null {
   if (!hasSuccessLanguage(text)) return null;
   if (/\btests?\b|\btest suite\b/i.test(text)) return "test";
@@ -60,7 +65,8 @@ function ciAssessmentToRequirementResult(
 function evaluateRequirement(
   requirement: Requirement,
   files: PatchFile[],
-  checks: CheckRunSummary[]
+  checks: CheckRunSummary[],
+  requiredCheckContexts: string[] | null
 ): RequirementResult {
   const category = checkCategory(requirement.text);
   if (category) {
@@ -74,7 +80,7 @@ function evaluateRequirement(
     );
   }
 
-  const overallCi = assessGenericCiSuccess(requirement.text, checks);
+  const overallCi = assessGenericCiSuccess(requirement.text, checks, requiredCheckContexts);
   if (overallCi) {
     return {
       requirement,
@@ -142,9 +148,12 @@ export async function verifyPullRequest(input: {
     discoverInstructionFiles(client, input.repository)
   ]);
 
-  const [checkRuns, workflowStepChecks] = await Promise.all([
+  const [checkRuns, workflowStepChecks, requiredCheckContexts] = await Promise.all([
     client.getCheckRuns(input.repository, pull.head.sha),
-    client.getWorkflowStepChecks(input.repository, pull.head.sha)
+    client.getWorkflowStepChecks(input.repository, pull.head.sha),
+    pull.base?.ref
+      ? client.getRequiredStatusCheckContexts(input.repository, pull.base.ref)
+      : Promise.resolve(null)
   ]);
   const checks: CheckRunSummary[] = [
     ...checkRuns.map((check) => ({
@@ -166,8 +175,26 @@ export async function verifyPullRequest(input: {
   const requirements = extractRequirements(issue.body ?? "");
   const claims = extractCompletionClaims(pull.body ?? "");
   const changedFiles = files.map((file) => file.filename);
-  const claimResults = buildClaimResults(claims, checks, changedFiles);
-  const results = requirements.map((requirement) => evaluateRequirement(requirement, files, checks));
+  const claimResults = buildClaimResults(claims, checks, changedFiles).map((result) => {
+    if (!isRequiredChecksSuccessStatement(result.claim.text)) return result;
+
+    const assessment = assessGenericCiSuccess(result.claim.text, checks, requiredCheckContexts);
+    if (!assessment) return result;
+
+    return {
+      claim: result.claim,
+      status: assessment.status,
+      reason: assessment.reason,
+      evidence: assessment.matchedChecks.map((check) => ({
+        kind: "ci" as const,
+        summary: `${check.name}: ${check.conclusion ?? check.status}`,
+        ...(check.htmlUrl ? { url: check.htmlUrl } : {})
+      }))
+    };
+  });
+  const results = requirements.map((requirement) =>
+    evaluateRequirement(requirement, files, checks, requiredCheckContexts)
+  );
 
   const verdict = results.some((result) => result.status === "FAILED")
     ? "FAILED"

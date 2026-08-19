@@ -32,17 +32,17 @@ describe("generic CI evidence", () => {
     ]);
   });
 
-  it("keeps required-check claims unproven when non-required failures may exist", () => {
+  it("keeps required-check claims unproven when membership evidence is unavailable", () => {
     const assessment = assessGenericCiSuccess("All required checks are green", [
       check("required / unit", "success"),
       check("advisory / self-hosted GPU", "failure")
     ]);
 
     expect(assessment).toMatchObject({ status: "UNPROVEN" });
-    expect(assessment?.reason).toContain("required-check membership");
+    expect(assessment?.reason).toContain("membership and completeness");
   });
 
-  it("keeps required-check claims unproven even when every observed check is green", () => {
+  it("keeps required-check claims unproven even when every observed check is green without configuration evidence", () => {
     const assessment = assessGenericCiSuccess("All required checks are green", [
       check("unit", "success"),
       check("integration", "success")
@@ -50,6 +50,57 @@ describe("generic CI evidence", () => {
 
     expect(assessment).toMatchObject({ status: "UNPROVEN" });
     expect(assessment?.reason).toContain("membership and completeness");
+  });
+
+  it("proves required-check claims from configured contexts while ignoring advisory failures", () => {
+    const assessment = assessGenericCiSuccess(
+      "All required checks are green",
+      [
+        check("unit", "success"),
+        check("integration", "success"),
+        check("advisory / self-hosted GPU", "failure")
+      ],
+      ["unit", "integration"]
+    );
+
+    expect(assessment).toMatchObject({ status: "PROVEN" });
+    expect(assessment?.matchedChecks.map((item) => item.name)).toEqual(["unit", "integration"]);
+  });
+
+  it("keeps required-check claims unproven when a configured required context is missing", () => {
+    const assessment = assessGenericCiSuccess(
+      "All required checks are green",
+      [check("unit", "success")],
+      ["unit", "integration"]
+    );
+
+    expect(assessment).toMatchObject({ status: "UNPROVEN" });
+    expect(assessment?.reason).toContain("integration");
+  });
+
+  it("fails required-check claims when an observed configured required check fails", () => {
+    const assessment = assessGenericCiSuccess(
+      "All required checks are green",
+      [
+        check("unit", "failure"),
+        check("advisory", "success")
+      ],
+      ["unit"]
+    );
+
+    expect(assessment).toMatchObject({ status: "FAILED" });
+    expect(assessment?.reason).toContain("unit");
+  });
+
+  it("keeps required-check claims unproven when no required checks are configured", () => {
+    const assessment = assessGenericCiSuccess(
+      "All required checks are green",
+      [check("advisory", "success")],
+      []
+    );
+
+    expect(assessment).toMatchObject({ status: "UNPROVEN" });
+    expect(assessment?.reason).toContain("No required status checks");
   });
 
   it("proves a generic CI claim only when every observed top-level check succeeds", () => {
