@@ -14,7 +14,9 @@ export interface ClaimEvidenceAssessment {
 
 type CheckCategory = "install" | "test" | "lint" | "type" | "build";
 type DatabaseScopeToken = "postgres" | "mysql" | "sqlite" | "mariadb";
-type StaticScopeToken = "windows" | "macos" | "linux" | "arm64" | "x64" | DatabaseScopeToken;
+type BrowserScopeToken = "chromium" | "chrome" | "firefox" | "webkit" | "safari";
+type MatrixScopeToken = DatabaseScopeToken | BrowserScopeToken;
+type StaticScopeToken = "windows" | "macos" | "linux" | "arm64" | "x64" | MatrixScopeToken;
 type RuntimeScopeToken = `node:${string}` | `php:${string}` | `python:${string}` | `go:${string}`;
 type ScopeToken = StaticScopeToken | RuntimeScopeToken;
 
@@ -27,6 +29,7 @@ const FAILED_CONCLUSIONS = new Set([
 ]);
 
 const DATABASE_SCOPES = new Set<DatabaseScopeToken>(["postgres", "mysql", "sqlite", "mariadb"]);
+const BROWSER_SCOPES = new Set<BrowserScopeToken>(["chromium", "chrome", "firefox", "webkit", "safari"]);
 
 const FILE_MATCH_STOP_WORDS = new Set([
   "the", "and", "for", "with", "that", "this", "from", "into", "when", "then", "must", "should",
@@ -80,12 +83,21 @@ function claimScopes(claim: string): ScopeToken[] {
   if (/\bmysql\b/i.test(claim)) scopes.push("mysql");
   if (/\bsqlite(?:3)?\b/i.test(claim)) scopes.push("sqlite");
   if (/\bmariadb\b/i.test(claim)) scopes.push("mariadb");
+  if (/\bchromium\b/i.test(claim)) scopes.push("chromium");
+  if (/\bchrome\b|\bgoogle chrome\b/i.test(claim)) scopes.push("chrome");
+  if (/\bfirefox\b/i.test(claim)) scopes.push("firefox");
+  if (/\bwebkit\b/i.test(claim)) scopes.push("webkit");
+  if (/\bsafari\b/i.test(claim)) scopes.push("safari");
   scopes.push(...runtimeScopes(claim));
   return scopes;
 }
 
 function isDatabaseScope(scope: ScopeToken): scope is DatabaseScopeToken {
   return !scope.includes(":") && DATABASE_SCOPES.has(scope as DatabaseScopeToken);
+}
+
+function isBrowserScope(scope: ScopeToken): scope is BrowserScopeToken {
+  return !scope.includes(":") && BROWSER_SCOPES.has(scope as BrowserScopeToken);
 }
 
 function escapeRegex(value: string): string {
@@ -113,7 +125,12 @@ function checkMatchesScope(check: CheckRunSummary, scope: ScopeToken): boolean {
   if (scope === "postgres") return /\bpostgres(?:ql)?\b/.test(name);
   if (scope === "mysql") return /\bmysql\b/.test(name);
   if (scope === "sqlite") return /\bsqlite(?:3)?\b/.test(name);
-  return /\bmariadb\b/.test(name);
+  if (scope === "mariadb") return /\bmariadb\b/.test(name);
+  if (scope === "chromium") return /\bchromium\b/.test(name);
+  if (scope === "chrome") return /\bchrome\b|\bgoogle chrome\b/.test(name);
+  if (scope === "firefox") return /\bfirefox\b/.test(name);
+  if (scope === "webkit") return /\bwebkit\b/.test(name);
+  return /\bsafari\b/.test(name);
 }
 
 function checkMatchesCategory(check: CheckRunSummary, category: CheckCategory): boolean {
@@ -187,6 +204,21 @@ function relevantChangedFiles(claim: string, changedFiles: string[]): string[] {
     .slice(0, 5);
 }
 
+function matrixScopeCombinations(scopes: ScopeToken[]): MatrixScopeToken[][] {
+  const databases = scopes.filter(isDatabaseScope);
+  const browsers = scopes.filter(isBrowserScope);
+  const databaseOptions: Array<DatabaseScopeToken | undefined> = databases.length > 0 ? databases : [undefined];
+  const browserOptions: Array<BrowserScopeToken | undefined> = browsers.length > 0 ? browsers : [undefined];
+
+  const combinations: MatrixScopeToken[][] = [];
+  for (const database of databaseOptions) {
+    for (const browser of browserOptions) {
+      combinations.push([database, browser].filter((scope): scope is MatrixScopeToken => scope !== undefined));
+    }
+  }
+  return combinations;
+}
+
 export function assessCompletionClaim(
   claim: string,
   checks: CheckRunSummary[]
@@ -228,33 +260,34 @@ export function assessCompletionClaim(
   }
 
   const scopes = claimScopes(claim);
-  const databaseScopes = scopes.filter(isDatabaseScope);
-  const environmentScopes = scopes.filter((scope) => !isDatabaseScope(scope));
+  const matrixScopes = scopes.filter((scope) => isDatabaseScope(scope) || isBrowserScope(scope));
+  const environmentScopes = scopes.filter((scope) => !isDatabaseScope(scope) && !isBrowserScope(scope));
+  const matrixCombinations = matrixScopeCombinations(scopes);
   const matchesByCategory = categories.map((category) => {
     const environmentMatches = checks.filter((check) =>
       checkMatchesCategory(check, category)
       && environmentScopes.every((scope) => checkMatchesScope(check, scope))
     );
 
-    if (databaseScopes.length === 0) {
-      return { category, checks: environmentMatches, missingDatabaseScopes: [] as DatabaseScopeToken[] };
+    if (matrixScopes.length === 0) {
+      return { category, checks: environmentMatches, missingMatrixScopes: [] as MatrixScopeToken[][] };
     }
 
-    const databaseMatches = databaseScopes.map((scope) => ({
-      scope,
-      checks: environmentMatches.filter((check) => checkMatchesScope(check, scope))
+    const matrixMatches = matrixCombinations.map((combination) => ({
+      scopes: combination,
+      checks: environmentMatches.filter((check) => combination.every((scope) => checkMatchesScope(check, scope)))
     }));
 
     return {
       category,
-      checks: dedupeChecks(databaseMatches.flatMap((entry) => entry.checks)),
-      missingDatabaseScopes: databaseMatches
+      checks: dedupeChecks(matrixMatches.flatMap((entry) => entry.checks)),
+      missingMatrixScopes: matrixMatches
         .filter((entry) => entry.checks.length === 0)
-        .map((entry) => entry.scope)
+        .map((entry) => entry.scopes)
     };
   });
   const missing = matchesByCategory
-    .filter((entry) => entry.checks.length === 0 || entry.missingDatabaseScopes.length > 0)
+    .filter((entry) => entry.checks.length === 0 || entry.missingMatrixScopes.length > 0)
     .map((entry) => entry.category);
   const matchedChecks = dedupeChecks(matchesByCategory.flatMap((entry) => entry.checks));
 
