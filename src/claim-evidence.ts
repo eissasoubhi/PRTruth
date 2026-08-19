@@ -13,6 +13,7 @@ export interface ClaimEvidenceAssessment {
 }
 
 type CheckCategory = "install" | "test" | "lint" | "type" | "build";
+type ScopeToken = "windows" | "macos" | "linux" | "arm64" | "x64";
 
 const FAILED_CONCLUSIONS = new Set([
   "failure",
@@ -42,6 +43,25 @@ function claimCategories(claim: string): CheckCategory[] {
   if (/\bbuild\b|compile|compilation/i.test(claim)) categories.push("build");
 
   return categories;
+}
+
+function claimScopes(claim: string): ScopeToken[] {
+  const scopes: ScopeToken[] = [];
+  if (/\bwindows\b|\bwin32\b/i.test(claim)) scopes.push("windows");
+  if (/\bmacos\b|\bmac os\b|\bosx\b|\bdarwin\b/i.test(claim)) scopes.push("macos");
+  if (/\blinux\b/i.test(claim)) scopes.push("linux");
+  if (/\barm64\b|\baarch64\b/i.test(claim)) scopes.push("arm64");
+  if (/\bx64\b|\bx86_64\b|\bamd64\b/i.test(claim)) scopes.push("x64");
+  return scopes;
+}
+
+function checkMatchesScope(check: CheckRunSummary, scope: ScopeToken): boolean {
+  const name = check.name.toLowerCase();
+  if (scope === "windows") return /\bwindows\b|\bwin32\b/.test(name);
+  if (scope === "macos") return /\bmacos\b|\bmac os\b|\bosx\b|\bdarwin\b/.test(name);
+  if (scope === "linux") return /\blinux\b/.test(name);
+  if (scope === "arm64") return /\barm64\b|\baarch64\b/.test(name);
+  return /\bx64\b|\bx86_64\b|\bamd64\b/.test(name);
 }
 
 function checkMatchesCategory(check: CheckRunSummary, category: CheckCategory): boolean {
@@ -87,6 +107,10 @@ function dedupeChecks(checks: CheckRunSummary[]): CheckRunSummary[] {
 
 function categoryLabel(categories: CheckCategory[]): string {
   return categories.join(", ");
+}
+
+function scopeLabel(scopes: ScopeToken[]): string {
+  return scopes.join(", ");
 }
 
 function claimTerms(text: string): string[] {
@@ -151,17 +175,22 @@ export function assessCompletionClaim(
     };
   }
 
+  const scopes = claimScopes(claim);
   const matchesByCategory = categories.map((category) => ({
     category,
-    checks: checks.filter((check) => checkMatchesCategory(check, category))
+    checks: checks.filter((check) =>
+      checkMatchesCategory(check, category)
+      && scopes.every((scope) => checkMatchesScope(check, scope))
+    )
   }));
   const missing = matchesByCategory.filter((entry) => entry.checks.length === 0).map((entry) => entry.category);
   const matchedChecks = dedupeChecks(matchesByCategory.flatMap((entry) => entry.checks));
 
   if (missing.length > 0) {
+    const scopeSuffix = scopes.length > 0 ? ` for the claimed scope (${scopeLabel(scopes)})` : "";
     return {
       status: "UNPROVEN",
-      reason: `No matching ${categoryLabel(missing)} check was observed.`,
+      reason: `No matching ${categoryLabel(missing)} check was observed${scopeSuffix}.`,
       matchedChecks
     };
   }
