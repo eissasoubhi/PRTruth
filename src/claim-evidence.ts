@@ -23,9 +23,10 @@ type RuntimeFamily = "node" | "php" | "python" | "go";
 type RuntimeScopeToken = `${RuntimeFamily}:${string}`;
 type FrameworkFamily = "rails" | "django" | "spring-boot";
 type FrameworkVersionScopeToken = `framework:${FrameworkFamily}:${string}`;
-type MatrixScopeToken = DatabaseScopeToken | DatabaseVersionScopeToken | BrowserScopeToken | OperatingSystemScopeToken | ArchitectureScopeToken | RuntimeScopeToken | FrameworkVersionScopeToken;
+type DotNetTargetFrameworkScopeToken = `dotnet:${string}`;
+type MatrixScopeToken = DatabaseScopeToken | DatabaseVersionScopeToken | BrowserScopeToken | OperatingSystemScopeToken | ArchitectureScopeToken | RuntimeScopeToken | FrameworkVersionScopeToken | DotNetTargetFrameworkScopeToken;
 type StaticScopeToken = OperatingSystemScopeToken | ArchitectureScopeToken | DatabaseScopeToken | BrowserScopeToken | ServiceScopeToken;
-type ScopeToken = StaticScopeToken | DatabaseVersionScopeToken | RuntimeScopeToken | FrameworkVersionScopeToken;
+type ScopeToken = StaticScopeToken | DatabaseVersionScopeToken | RuntimeScopeToken | FrameworkVersionScopeToken | DotNetTargetFrameworkScopeToken;
 
 const FAILED_CONCLUSIONS = new Set([
   "failure",
@@ -79,6 +80,18 @@ function runtimeScopes(claim: string): RuntimeScopeToken[] {
   }
 
   return scopes;
+}
+
+function dotNetTargetFrameworkScopes(claim: string): DotNetTargetFrameworkScopeToken[] {
+  const scopes: DotNetTargetFrameworkScopeToken[] = [];
+  const pattern = /\b(net(?:standard|coreapp)?\d+(?:\.\d+)?(?:-[a-z0-9.]+)?)\b/gi;
+
+  for (const match of claim.matchAll(pattern)) {
+    const targetFramework = match[1]?.toLowerCase();
+    if (targetFramework) scopes.push(`dotnet:${targetFramework}` as DotNetTargetFrameworkScopeToken);
+  }
+
+  return [...new Set(scopes)];
 }
 
 function databaseVersionScopes(claim: string): DatabaseVersionScopeToken[] {
@@ -156,6 +169,7 @@ function claimScopes(claim: string): ScopeToken[] {
   if (/\brabbitmq\b|\brabbit mq\b/i.test(claim)) scopes.push("rabbitmq");
   if (/\bkafka\b|\bapache kafka\b/i.test(claim)) scopes.push("kafka");
   if (/\belasticsearch\b|\belastic search\b/i.test(claim)) scopes.push("elasticsearch");
+  scopes.push(...dotNetTargetFrameworkScopes(claim));
   scopes.push(...frameworkVersionScopes(claim));
   scopes.push(...runtimeScopes(claim));
   return scopes;
@@ -171,6 +185,10 @@ function isDatabaseVersionScope(scope: ScopeToken): scope is DatabaseVersionScop
 
 function isFrameworkVersionScope(scope: ScopeToken): scope is FrameworkVersionScopeToken {
   return scope.startsWith("framework:");
+}
+
+function isDotNetTargetFrameworkScope(scope: ScopeToken): scope is DotNetTargetFrameworkScopeToken {
+  return scope.startsWith("dotnet:");
 }
 
 function isBrowserScope(scope: ScopeToken): scope is BrowserScopeToken {
@@ -217,6 +235,13 @@ function runtimeScopeMatches(name: string, scope: RuntimeScopeToken): boolean {
   return new RegExp(`\\b${runtimePattern}\\s*v?${versionPattern}(?:\\b|\\.)`, "i").test(name);
 }
 
+function dotNetTargetFrameworkScopeMatches(name: string, scope: DotNetTargetFrameworkScopeToken): boolean {
+  const targetFramework = scope.slice("dotnet:".length);
+  if (!targetFramework) return false;
+  const targetFrameworkPattern = escapeRegex(targetFramework).replace(/\\\./g, "\\.");
+  return new RegExp(`\\b${targetFrameworkPattern}\\b`, "i").test(name);
+}
+
 function databaseVersionScopeMatches(name: string, scope: DatabaseVersionScopeToken): boolean {
   const [, database, version] = scope.split(":", 3);
   if (!database || !version) return false;
@@ -243,6 +268,7 @@ function checkMatchesScope(check: CheckRunSummary, scope: ScopeToken): boolean {
   const name = check.name.toLowerCase();
   if (isDatabaseVersionScope(scope)) return databaseVersionScopeMatches(name, scope);
   if (isFrameworkVersionScope(scope)) return frameworkVersionScopeMatches(name, scope);
+  if (isDotNetTargetFrameworkScope(scope)) return dotNetTargetFrameworkScopeMatches(name, scope);
   if (isRuntimeScope(scope)) return runtimeScopeMatches(name, scope);
   if (scope === "windows") return /\bwindows\b|\bwin32\b/.test(name);
   if (scope === "macos") return /\bmacos\b|\bmac os\b|\bosx\b|\bdarwin\b/.test(name);
@@ -343,6 +369,7 @@ function matrixScopeCombinations(scopes: ScopeToken[]): MatrixScopeToken[][] {
   const operatingSystems = scopes.filter(isOperatingSystemScope);
   const architectures = scopes.filter(isArchitectureScope);
   const frameworks = scopes.filter(isFrameworkVersionScope);
+  const dotNetTargetFrameworks = scopes.filter(isDotNetTargetFrameworkScope);
   const runtimeMatrices = runtimeMatrixScopes(scopes);
   const runtimeFamilies = [...new Set(runtimeMatrices.map(runtimeFamily))];
   const axes: MatrixScopeToken[][] = [];
@@ -352,6 +379,7 @@ function matrixScopeCombinations(scopes: ScopeToken[]): MatrixScopeToken[][] {
   if (operatingSystems.length > 0) axes.push(operatingSystems);
   if (architectures.length > 0) axes.push(architectures);
   if (frameworks.length > 0) axes.push(frameworks);
+  if (dotNetTargetFrameworks.length > 0) axes.push(dotNetTargetFrameworks);
   for (const family of runtimeFamilies) {
     axes.push(runtimeMatrices.filter((scope) => runtimeFamily(scope) === family));
   }
@@ -413,6 +441,7 @@ export function assessCompletionClaim(
     || isOperatingSystemScope(scope)
     || isArchitectureScope(scope)
     || isFrameworkVersionScope(scope)
+    || isDotNetTargetFrameworkScope(scope)
     || runtimeMatrices.includes(scope as RuntimeScopeToken)
   );
   const environmentScopes = scopes.filter((scope) => !matrixScopes.includes(scope as MatrixScopeToken));
