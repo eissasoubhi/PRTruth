@@ -50,6 +50,9 @@ function toolSpecificValidationMatchers(text: string): ScopeMatcher[] {
   if (/\bbiome\b/i.test(text)) tools.push(matcher("biome", /\bbiome\b/i));
   if (/\bphpstan\b/i.test(text)) tools.push(matcher("phpstan", /\bphpstan\b/i));
   if (/\bpsalm\b/i.test(text)) tools.push(matcher("psalm", /\bpsalm\b/i));
+  if (/\b(?:laravel\s+)?pint\b/i.test(text)) tools.push(matcher("pint", /\b(?:laravel\s+)?pint\b/i));
+  if (/\brector\b/i.test(text)) tools.push(matcher("rector", /\brector\b/i));
+  if (/\bpest\b/i.test(text)) tools.push(matcher("pest", /\bpest\b/i));
   if (/\bblack\b(?![- ]box)/i.test(text)) tools.push(matcher("black", /\bblack\b(?![- ]box)/i));
   if (/\bisort\b/i.test(text)) tools.push(matcher("isort", /\bisort\b/i));
   return tools;
