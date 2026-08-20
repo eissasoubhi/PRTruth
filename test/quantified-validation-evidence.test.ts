@@ -18,7 +18,7 @@ describe("quantitative validation evidence", () => {
     );
 
     expect(assessment.status).toBe("UNPROVEN");
-    expect(assessment.reason).toContain("stated count");
+    expect(assessment.reason).toContain("stated value");
     expect(assessment.matchedChecks.map((item) => item.name)).toEqual(["Unit Test"]);
   });
 
@@ -29,7 +29,7 @@ describe("quantitative validation evidence", () => {
     );
 
     expect(assessment.status).toBe("UNPROVEN");
-    expect(assessment.reason).toContain("stated count");
+    expect(assessment.reason).toContain("stated value");
   });
 
   it("still reports a quantified success claim as failed when its matching check failed", () => {
