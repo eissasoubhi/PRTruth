@@ -98,15 +98,15 @@ npm test 598/598 pass. npm run lint passes. Typecheck passes.
   it("accepts explicit zero-failure validation summaries", () => {
     const claims = extractCompletionClaims(`
 ## Validation
-- Focused Node 24 suite: 96 passed, 0 failed.
-- Full suite: 1140/1140 PASS, failures: 0.
+- Focused Node 24 tests: 96 passed, 0 failed.
+- Full test suite: 1140/1140 PASS, failures: 0.
 - Worker tests: 2533 passed, zero tests failed.
-- Regression suite: 18 passed, 1 failed.
+- Regression tests: 18 passed, 1 failed.
 `);
 
     expect(claims.map((claim) => claim.text)).toEqual([
-      "Focused Node 24 suite: 96 passed, 0 failed.",
-      "Full suite: 1140/1140 PASS, failures: 0.",
+      "Focused Node 24 tests: 96 passed, 0 failed.",
+      "Full test suite: 1140/1140 PASS, failures: 0.",
       "Worker tests: 2533 passed, zero tests failed."
     ]);
   });
