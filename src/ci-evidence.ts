@@ -52,6 +52,8 @@ function toolSpecificValidationMatchers(text: string): ScopeMatcher[] {
   if (/\bflake8\b/i.test(text)) tools.push(matcher("flake8", /\bflake8\b/i));
   if (/\bprettier\b/i.test(text)) tools.push(matcher("prettier", /\bprettier\b/i));
   if (/\bbiome\b/i.test(text)) tools.push(matcher("biome", /\bbiome\b/i));
+  if (/\brubocop\b/i.test(text)) tools.push(matcher("rubocop", /\brubocop\b/i));
+  if (/\bstandard(?:rb| ruby)\b/i.test(text)) tools.push(matcher("standardrb", /\bstandard(?:rb)?\b/i));
   if (/\bphpcs\b/i.test(text)) tools.push(matcher("phpcs", /\bphpcs\b/i));
   if (/\bphpstan\b/i.test(text)) tools.push(matcher("phpstan", /\bphpstan\b/i));
   if (/\bpsalm\b/i.test(text)) tools.push(matcher("psalm", /\bpsalm\b/i));
