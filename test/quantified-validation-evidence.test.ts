@@ -32,6 +32,21 @@ describe("quantitative validation evidence", () => {
     expect(assessment.reason).toContain("stated value");
   });
 
+  it("keeps bare passed counts and assertion counts unproven", () => {
+    const pestAssessment = assessCompletionClaim(
+      "./vendor/bin/pest tests/Feature/Mcp/McpSettingsTest.php — 14 passed, 58 assertions",
+      [check("Backend tests", "success")]
+    );
+    const vitestAssessment = assessCompletionClaim(
+      "npm run test -- --run test/nuxt/mcp-settings.spec.ts — 8 passed",
+      [check("Frontend tests", "success")]
+    );
+
+    expect(pestAssessment.status).toBe("UNPROVEN");
+    expect(pestAssessment.reason).toContain("stated value");
+    expect(vitestAssessment.status).toBe("UNPROVEN");
+  });
+
   it("still reports a quantified success claim as failed when its matching check failed", () => {
     const assessment = assessCompletionClaim(
       "CLI unit tests — 43 files / 542 tests passed",
