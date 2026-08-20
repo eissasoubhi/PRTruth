@@ -1,6 +1,7 @@
 import type { CompletionClaim } from "./types.js";
 
 const CLAIM_SECTION = /^(?:#{1,6}\s+)?(?:completion claims?|claims?|validation|verification|what changed|changes|implemented|included|done)\s*:??\s*$/i;
+const VALIDATION_ONLY_SECTION = /^(?:testing|test plan|test results?)\s*:??\s*$/i;
 const HEADING = /^#{1,6}\s+/;
 const VALIDATION_TERM = /\b(?:ci|tests?|test suite|lint(?:ing)?|type[ -]?check|typescript|build|compile|compilation|install(?:ation)?|dependencies)\b/i;
 const SUCCESS_TERM = /\b(?:pass(?:es|ed|ing)?|succeed(?:s|ed|ing)?|success(?:ful(?:ly)?)?|green|complete(?:s|d|ing)?)\b/i;
@@ -8,6 +9,8 @@ const FAILURE_TERM = /\b(?:fail(?:s|ed|ing|ure)?|broken|red)\b/i;
 const NEGATED_SUCCESS_TERM = /\b(?:(?:did|does|do|has|have|is|are|was|were|can)\s+not|never|didn't|doesn't|don't|hasn't|haven't|isn't|aren't|wasn't|weren't|cannot|can't)\s+(?:pass(?:es|ed|ing)?|succeed(?:s|ed|ing)?|complete(?:s|d|ing)?)\b/i;
 const NON_SUCCESS_VALIDATION_TERM = /\b(?:skip(?:s|ped|ping)?|pending|queued|cancel(?:s|led|ing)?|blocked|waiting|running|flaky|unstable|degraded|inconclusive)\b|\b(?:timed?\s+out|in\s+progress)\b|\b(?:(?:did|does|do|has|have|is|are|was|were)\s+not|didn't|doesn't|don't|hasn't|haven't|isn't|aren't|wasn't|weren't)\s+(?:run|execut(?:e|ed)|start(?:ed)?|perform(?:ed)?|verif(?:y|ied)|check(?:ed)?)\b/i;
 const INCOMPLETE_SUCCESS_TERM = /\b(?:partial(?:ly)?|mostly)\b|\b(?:some|most|many)\s+(?:tests?|checks?|jobs?|steps?)\b|\bexcept\b/i;
+
+type SectionMode = "none" | "claims" | "validation-only";
 
 function cleanItem(value: string): string {
   return value
@@ -42,7 +45,7 @@ export function extractCompletionClaims(body: string): CompletionClaim[] {
 
   const lines = body.split(/\r?\n/);
   const claims: CompletionClaim[] = [];
-  let inClaimSection = false;
+  let sectionMode: SectionMode = "none";
 
   for (let index = 0; index < lines.length; index += 1) {
     const raw = lines[index] ?? "";
@@ -52,7 +55,11 @@ export function extractCompletionClaims(body: string): CompletionClaim[] {
 
     if (HEADING.test(trimmed)) {
       const headingText = trimmed.replace(HEADING, "").trim();
-      inClaimSection = CLAIM_SECTION.test(headingText);
+      sectionMode = CLAIM_SECTION.test(headingText)
+        ? "claims"
+        : VALIDATION_ONLY_SECTION.test(headingText)
+          ? "validation-only"
+          : "none";
       continue;
     }
 
@@ -69,11 +76,15 @@ export function extractCompletionClaims(body: string): CompletionClaim[] {
       continue;
     }
 
-    if (!inClaimSection) continue;
+    if (sectionMode === "none") continue;
 
     if (/^[-*+]\s+/.test(trimmed) || /^\d+[.)]\s+/.test(trimmed)) {
       const text = cleanItem(trimmed);
-      if (text.length >= 4 && !looksLikeFailureReport(text)) {
+      const shouldExtract = sectionMode === "claims"
+        ? text.length >= 4 && !looksLikeFailureReport(text)
+        : looksLikeValidationProse(text);
+
+      if (shouldExtract) {
         claims.push({
           id: `claim-${claims.length + 1}`,
           text,
