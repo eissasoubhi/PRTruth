@@ -21,7 +21,8 @@ type ArchitectureScopeToken = "arm64" | "x64";
 type ServiceScopeToken = "redis" | "rabbitmq" | "kafka" | "elasticsearch";
 type RuntimeFamily = "node" | "php" | "python" | "go";
 type RuntimeScopeToken = `${RuntimeFamily}:${string}`;
-type FrameworkVersionScopeToken = `framework:spring-boot:${string}`;
+type FrameworkFamily = "rails" | "django" | "spring-boot";
+type FrameworkVersionScopeToken = `framework:${FrameworkFamily}:${string}`;
 type MatrixScopeToken = DatabaseScopeToken | DatabaseVersionScopeToken | BrowserScopeToken | OperatingSystemScopeToken | ArchitectureScopeToken | RuntimeScopeToken | FrameworkVersionScopeToken;
 type StaticScopeToken = OperatingSystemScopeToken | ArchitectureScopeToken | DatabaseScopeToken | BrowserScopeToken | ServiceScopeToken;
 type ScopeToken = StaticScopeToken | DatabaseVersionScopeToken | RuntimeScopeToken | FrameworkVersionScopeToken;
@@ -99,12 +100,30 @@ function databaseVersionScopes(claim: string): DatabaseVersionScopeToken[] {
   return scopes;
 }
 
-function springBootVersionScopes(claim: string): FrameworkVersionScopeToken[] {
+function frameworkVersionScopes(claim: string): FrameworkVersionScopeToken[] {
   const scopes: FrameworkVersionScopeToken[] = [];
-  for (const match of claim.matchAll(/\bspring\s+boot\s*v?(\d+(?:\.\d+){1,2})\b/gi)) {
-    const version = match[1];
-    if (version) scopes.push(`framework:spring-boot:${version}`);
+  const definitions = [
+    {
+      framework: "rails",
+      pattern: /\b(?:rails|ruby on rails|active\s*record)\s*v?(\d+(?:\.\d+){1,3})\b/gi
+    },
+    {
+      framework: "django",
+      pattern: /\bdjango\s*v?(\d+(?:\.\d+){1,2})\b/gi
+    },
+    {
+      framework: "spring-boot",
+      pattern: /\bspring\s+boot\s*v?(\d+(?:\.\d+){1,2})\b/gi
+    }
+  ] as const;
+
+  for (const { framework, pattern } of definitions) {
+    for (const match of claim.matchAll(pattern)) {
+      const version = match[1];
+      if (version) scopes.push(`framework:${framework}:${version}` as FrameworkVersionScopeToken);
+    }
   }
+
   return scopes;
 }
 
@@ -137,7 +156,7 @@ function claimScopes(claim: string): ScopeToken[] {
   if (/\brabbitmq\b|\brabbit mq\b/i.test(claim)) scopes.push("rabbitmq");
   if (/\bkafka\b|\bapache kafka\b/i.test(claim)) scopes.push("kafka");
   if (/\belasticsearch\b|\belastic search\b/i.test(claim)) scopes.push("elasticsearch");
-  scopes.push(...springBootVersionScopes(claim));
+  scopes.push(...frameworkVersionScopes(claim));
   scopes.push(...runtimeScopes(claim));
   return scopes;
 }
@@ -151,7 +170,7 @@ function isDatabaseVersionScope(scope: ScopeToken): scope is DatabaseVersionScop
 }
 
 function isFrameworkVersionScope(scope: ScopeToken): scope is FrameworkVersionScopeToken {
-  return scope.startsWith("framework:spring-boot:");
+  return scope.startsWith("framework:");
 }
 
 function isBrowserScope(scope: ScopeToken): scope is BrowserScopeToken {
@@ -207,9 +226,16 @@ function databaseVersionScopeMatches(name: string, scope: DatabaseVersionScopeTo
 }
 
 function frameworkVersionScopeMatches(name: string, scope: FrameworkVersionScopeToken): boolean {
-  const version = scope.split(":", 3)[2];
-  if (!version) return false;
+  const [, framework, version] = scope.split(":", 3);
+  if (!framework || !version) return false;
   const versionPattern = escapeRegex(version).replace(/\\\./g, "\\.");
+
+  if (framework === "rails") {
+    return new RegExp(`\\b(?:rails|ruby on rails|active\\s*record)\\s*v?${versionPattern}(?:\\b|\\.)`, "i").test(name);
+  }
+  if (framework === "django") {
+    return new RegExp(`\\bdjango(?:\\s+compatibility)?\\s*(?:==|~=|=)?\\s*v?${versionPattern}(?:\\b|\\.)`, "i").test(name);
+  }
   return new RegExp(`\\bspring\\s+boot\\s*v?${versionPattern}(?:\\b|\\.)`, "i").test(name);
 }
 
