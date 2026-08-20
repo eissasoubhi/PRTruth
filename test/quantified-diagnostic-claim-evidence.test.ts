@@ -17,7 +17,7 @@ describe("quantified diagnostic claims", () => {
     ]);
 
     expect(assessment.status).toBe("UNPROVEN");
-    expect(assessment.reason).toContain("stated count");
+    expect(assessment.reason).toContain("stated value");
     expect(assessment.matchedChecks.map((item) => item.name)).toEqual(["lint"]);
   });
 
@@ -27,7 +27,7 @@ describe("quantified diagnostic claims", () => {
     ]);
 
     expect(assessment.status).toBe("UNPROVEN");
-    expect(assessment.reason).toContain("stated count");
+    expect(assessment.reason).toContain("stated value");
   });
 
   it("preserves failure when a matching quantified diagnostic check fails", () => {
