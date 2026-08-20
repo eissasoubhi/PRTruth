@@ -46,6 +46,29 @@ describe("extractCompletionClaims", () => {
     ]);
   });
 
+  it("extracts real-world verification sections without treating nearby test descriptions as claims", () => {
+    const claims = extractCompletionClaims(`
+## Tests
+- sends the copy on the first paid sale when live
+- no send on a later sale
+
+## Verification
+- pnpm vitest run first-sale-text.test.ts — 7/7 pass
+- pnpm typecheck — pass
+- pnpm biome check — pass
+
+## Out of scope
+- Manual live-provider verification remains separate
+`);
+
+    expect(claims.map((claim) => claim.text)).toEqual([
+      "pnpm vitest run first-sale-text.test.ts — 7/7 pass",
+      "pnpm typecheck — pass",
+      "pnpm biome check — pass"
+    ]);
+    expect(claims.every((claim) => claim.source === "claim-section")).toBe(true);
+  });
+
   it("captures high-confidence validation prose used by real project pull requests", () => {
     const claims = extractCompletionClaims(`
 ## Validation
