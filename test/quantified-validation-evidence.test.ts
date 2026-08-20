@@ -42,12 +42,19 @@ describe("quantitative validation evidence", () => {
     expect(assessment.reason).toContain("Unit Test");
   });
 
-  it("does not confuse a runtime version with a quantitative test count", () => {
-    const assessment = assessCompletionClaim(
-      "Tests pass on Node 22",
-      [check("tests / Node 22", "success")]
-    );
+  it("does not confuse runtime or database versions with quantitative test counts", () => {
+    expect(
+      assessCompletionClaim(
+        "Node 22 tests passed",
+        [check("tests / Node 22", "success")]
+      ).status
+    ).toBe("PROVEN");
 
-    expect(assessment.status).toBe("PROVEN");
+    expect(
+      assessCompletionClaim(
+        "PostgreSQL 17 tests passed",
+        [check("tests / PostgreSQL 17", "success")]
+      ).status
+    ).toBe("PROVEN");
   });
 });
