@@ -338,11 +338,13 @@ function isQuantifiedValidationClaim(claim: string): boolean {
     "i"
   );
   const diagnosticCount = /\b\d[\d,]*\s+(?:errors?|warnings?|issues?|findings?|diagnostics?)\b/i;
+  const coveragePercentage = /(?:\bcoverage(?:\s+(?:is|at))?\s*[:=]?\s*\d+(?:\.\d+)?%|\b\d+(?:\.\d+)?%\s+(?:[a-z][\w-]*\s+){0,3}coverage\b)/i;
 
   return countedResult.test(claim)
     || fileAndTestCounts.test(claim)
     || slashResult.test(claim)
-    || diagnosticCount.test(claim);
+    || diagnosticCount.test(claim)
+    || coveragePercentage.test(claim);
 }
 
 function dedupeChecks(checks: CheckRunSummary[]): CheckRunSummary[] {
