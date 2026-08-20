@@ -50,6 +50,8 @@ const FILE_MATCH_STOP_WORDS = new Set([
 const GENERIC_UNPROVEN_REASON = "No deterministic evidence rule currently matches this completion claim.";
 const TEST_COVERAGE_UNPROVEN_REASON =
   "A specific test-coverage claim requires evidence that the named behavior is exercised, not only a successful test run.";
+const QUANTIFIED_VALIDATION_UNPROVEN_REASON =
+  "A quantitative validation claim requires evidence for the stated count, not only a successful check.";
 
 function claimCategories(claim: string): CheckCategory[] {
   const categories: CheckCategory[] = [];
@@ -321,6 +323,24 @@ function isSpecificTestCoverageClaim(claim: string): boolean {
     || /\b(?:test\s+coverage|coverage\s+(?:for|of)|covered\s+by\s+tests?)\b/i.test(claim);
 }
 
+function isQuantifiedValidationClaim(claim: string): boolean {
+  const success = "(?:pass(?:ed|ing)?|succeed(?:ed|ing)?|successful(?:ly)?)";
+  const countedResult = new RegExp(
+    `(?:^|[—–:;,([=]\\s*)\\d[\\d,]*\\s+(?:test\\s+files?|tests?|checks?|jobs?|steps?)\\s+${success}\\b`,
+    "i"
+  );
+  const fileAndTestCounts = new RegExp(
+    `\\b\\d[\\d,]*\\s+(?:test\\s+)?files?\\s*\\/\\s*\\d[\\d,]*\\s+tests?\\s+${success}\\b`,
+    "i"
+  );
+  const slashResult = new RegExp(
+    `\\b\\d+\\s*\\/\\s*\\d+\\s+(?:(?:tests?|checks?|jobs?|steps?)\\s+)?${success}\\b`,
+    "i"
+  );
+
+  return countedResult.test(claim) || fileAndTestCounts.test(claim) || slashResult.test(claim);
+}
+
 function dedupeChecks(checks: CheckRunSummary[]): CheckRunSummary[] {
   const seen = new Set<string>();
   return checks.filter((check) => {
@@ -499,6 +519,14 @@ export function assessCompletionClaim(
     return {
       status: "UNPROVEN",
       reason: `A matching CI check has not completed: ${incomplete.name}.`,
+      matchedChecks
+    };
+  }
+
+  if (isQuantifiedValidationClaim(claim)) {
+    return {
+      status: "UNPROVEN",
+      reason: QUANTIFIED_VALIDATION_UNPROVEN_REASON,
       matchedChecks
     };
   }
