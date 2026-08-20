@@ -33,6 +33,10 @@ function isRequiredChecksSuccessStatement(text: string): boolean {
     || /\b(?:ci|checks?|workflows?|jobs?)\b[^.\n]{0,80}\brequired\b/i.test(text);
 }
 
+function hasToolSpecificValidationSubject(text: string): boolean {
+  return /\b(?:pytest|ruff|mypy)\b/i.test(text);
+}
+
 function matcher(label: string, pattern: RegExp): ScopeMatcher {
   return {
     label,
@@ -329,6 +333,14 @@ export function assessGenericCiSuccess(
   requiredCheckContexts: RequiredStatusCheck[] | null = null
 ): CiEvidenceAssessment | null {
   if (!isGenericCiSuccessStatement(text)) return null;
+
+  if (hasToolSpecificValidationSubject(text)) {
+    return {
+      status: "UNPROVEN",
+      reason: "A tool-specific validation claim requires matching tool evidence, not only aggregate CI status.",
+      matchedChecks: []
+    };
+  }
 
   const topLevelChecks = checks.filter((check) => check.scope !== "step");
   const requiredChecksClaim = isRequiredChecksSuccessStatement(text);
