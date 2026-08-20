@@ -292,7 +292,7 @@ function checkMatchesScope(check: CheckRunSummary, scope: ScopeToken): boolean {
   return /\belasticsearch\b|\belastic search\b/.test(name);
 }
 
-function checkMatchesCategory(check: CheckRunSummary, category: CheckCategory): boolean {
+function checkMatchesCategory(check: CheckRunSummary, category: CheckCategory, claim: string): boolean {
   const name = check.name.toLowerCase();
 
   if (category === "install") {
@@ -302,6 +302,7 @@ function checkMatchesCategory(check: CheckRunSummary, category: CheckCategory): 
     return /\btest\b|tests|vitest|jest|phpunit|pytest|go test/.test(name);
   }
   if (category === "lint") {
+    if (/\beslint\b/i.test(claim)) return /\beslint\b/.test(name);
     return /\blint\b|eslint|phpstan|static analysis/.test(name);
   }
   if (category === "type") {
@@ -485,7 +486,7 @@ export function assessCompletionClaim(
   const matrixCombinations = matrixScopeCombinations(scopes);
   const matchesByCategory = categories.map((category) => {
     const environmentMatches = checks.filter((check) =>
-      checkMatchesCategory(check, category)
+      checkMatchesCategory(check, category, claim)
       && environmentScopes.every((scope) => checkMatchesScope(check, scope))
     );
 
