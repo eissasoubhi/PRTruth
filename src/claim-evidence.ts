@@ -329,6 +329,10 @@ function isQuantifiedValidationClaim(claim: string): boolean {
     `(?:^|[—–:;,([=]\\s*)\\d[\\d,]*\\s+(?:test\\s+files?|tests?|checks?|jobs?|steps?)\\s+${success}\\b`,
     "i"
   );
+  const bareSuccessCount = new RegExp(
+    `(?:^|[—–:;,([=]\\s*)\\d[\\d,]*\\s+${success}\\b`,
+    "i"
+  );
   const fileAndTestCounts = new RegExp(
     `\\b\\d[\\d,]*\\s+(?:test\\s+)?files?\\s*\\/\\s*\\d[\\d,]*\\s+tests?\\s+${success}\\b`,
     "i"
@@ -337,14 +341,17 @@ function isQuantifiedValidationClaim(claim: string): boolean {
     `\\b\\d+\\s*\\/\\s*\\d+\\s+(?:(?:tests?|checks?|jobs?|steps?)\\s+)?${success}\\b`,
     "i"
   );
+  const assertionCount = /\b\d[\d,]*\s+assertions?\b/i;
   const diagnosticCount = /\b\d[\d,]*\s+(?:errors?|warnings?|issues?|findings?|diagnostics?)\b/i;
   const coveragePercentage = /(?:\bcoverage(?:\s+(?:is|at))?\s*[:=]?\s*\d+(?:\.\d+)?%|\b\d+(?:\.\d+)?%\s+(?:[a-z][\w-]*\s+){0,3}coverage\b)/i;
   const sizeMetric = /(?:\b\d+(?:\.\d+)?\s*(?:bytes?|kib|mib|gib|kb|mb|gb)\b\s+(?:binary|bundle|artifact|package|size)\b|\b(?:binary|bundle|artifact|package|size)\b(?:\s+[a-z][\w-]*){0,3}\s+\d+(?:\.\d+)?\s*(?:bytes?|kib|mib|gib|kb|mb|gb)\b)/i;
   const durationMetric = /(?:\b\d+(?:\.\d+)?\s*(?:ns|us|µs|ms|sec(?:onds?)?|s)\b(?:\s+[a-z][\w-]*){0,3}\s+(?:startup|latency|duration|runtime|time)\b|\b(?:startup|latency|duration|runtime|time)\b(?:\s+[a-z][\w-]*){0,3}\s+\d+(?:\.\d+)?\s*(?:ns|us|µs|ms|sec(?:onds?)?|s)\b)/i;
 
   return countedResult.test(claim)
+    || bareSuccessCount.test(claim)
     || fileAndTestCounts.test(claim)
     || slashResult.test(claim)
+    || assertionCount.test(claim)
     || diagnosticCount.test(claim)
     || coveragePercentage.test(claim)
     || sizeMetric.test(claim)
