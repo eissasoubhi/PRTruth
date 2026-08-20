@@ -53,6 +53,7 @@ function toolSpecificValidationMatchers(text: string): ScopeMatcher[] {
   if (/\bprettier\b/i.test(text)) tools.push(matcher("prettier", /\bprettier\b/i));
   if (/\bbiome\b/i.test(text)) tools.push(matcher("biome", /\bbiome\b/i));
   if (/\bgitleaks\b/i.test(text)) tools.push(matcher("gitleaks", /\bgitleaks\b/i));
+  if (/\bsemgrep\b/i.test(text)) tools.push(matcher("semgrep", /\bsemgrep\b/i));
   if (/\brubocop\b/i.test(text)) tools.push(matcher("rubocop", /\brubocop\b/i));
   if (/\bstandard(?:rb| ruby)\b/i.test(text)) tools.push(matcher("standardrb", /\bstandard(?:rb)?\b/i));
   if (/\bphpcs\b/i.test(text)) tools.push(matcher("phpcs", /\bphpcs\b/i));
