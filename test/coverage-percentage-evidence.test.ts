@@ -14,7 +14,7 @@ describe("coverage percentage evidence", () => {
     );
 
     expect(assessment.status).toBe("UNPROVEN");
-    expect(assessment.reason).toContain("stated count");
+    expect(assessment.reason).toContain("stated value");
     expect(assessment.matchedChecks.map((item) => item.name)).toEqual(["application tests"]);
   });
 
@@ -25,7 +25,7 @@ describe("coverage percentage evidence", () => {
     );
 
     expect(assessment.status).toBe("UNPROVEN");
-    expect(assessment.reason).toContain("stated count");
+    expect(assessment.reason).toContain("stated value");
   });
 
   it("preserves failure precedence for quantified coverage claims", () => {
