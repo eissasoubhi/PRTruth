@@ -20,7 +20,8 @@ describe("Prettier-specific generic CI evidence", () => {
       status: "UNPROVEN",
       matchedChecks: []
     });
-    expect(assessment?.reason).toContain("tool-specific validation claim");
+    expect(assessment?.reason).toContain("matching CI evidence");
+    expect(assessment?.reason).toContain("prettier");
   });
 
   it("keeps truly generic green-CI statements provable", () => {
