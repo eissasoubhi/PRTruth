@@ -51,7 +51,7 @@ const GENERIC_UNPROVEN_REASON = "No deterministic evidence rule currently matche
 const TEST_COVERAGE_UNPROVEN_REASON =
   "A specific test-coverage claim requires evidence that the named behavior is exercised, not only a successful test run.";
 const QUANTIFIED_VALIDATION_UNPROVEN_REASON =
-  "A quantitative validation claim requires evidence for the stated count, not only a successful check.";
+  "A quantitative validation claim requires evidence for the stated value, not only a successful check.";
 
 function claimCategories(claim: string): CheckCategory[] {
   const categories: CheckCategory[] = [];
@@ -339,12 +339,16 @@ function isQuantifiedValidationClaim(claim: string): boolean {
   );
   const diagnosticCount = /\b\d[\d,]*\s+(?:errors?|warnings?|issues?|findings?|diagnostics?)\b/i;
   const coveragePercentage = /(?:\bcoverage(?:\s+(?:is|at))?\s*[:=]?\s*\d+(?:\.\d+)?%|\b\d+(?:\.\d+)?%\s+(?:[a-z][\w-]*\s+){0,3}coverage\b)/i;
+  const sizeMetric = /(?:\b\d+(?:\.\d+)?\s*(?:bytes?|kib|mib|gib|kb|mb|gb)\b\s+(?:binary|bundle|artifact|package|size)\b|\b(?:binary|bundle|artifact|package|size)\b(?:\s+[a-z][\w-]*){0,3}\s+\d+(?:\.\d+)?\s*(?:bytes?|kib|mib|gib|kb|mb|gb)\b)/i;
+  const durationMetric = /(?:\b\d+(?:\.\d+)?\s*(?:ns|us|µs|ms|sec(?:onds?)?|s)\b(?:\s+[a-z][\w-]*){0,3}\s+(?:startup|latency|duration|runtime|time)\b|\b(?:startup|latency|duration|runtime|time)\b(?:\s+[a-z][\w-]*){0,3}\s+\d+(?:\.\d+)?\s*(?:ns|us|µs|ms|sec(?:onds?)?|s)\b)/i;
 
   return countedResult.test(claim)
     || fileAndTestCounts.test(claim)
     || slashResult.test(claim)
     || diagnosticCount.test(claim)
-    || coveragePercentage.test(claim);
+    || coveragePercentage.test(claim)
+    || sizeMetric.test(claim)
+    || durationMetric.test(claim);
 }
 
 function dedupeChecks(checks: CheckRunSummary[]): CheckRunSummary[] {
