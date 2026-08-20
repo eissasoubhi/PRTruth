@@ -34,7 +34,7 @@ function isRequiredChecksSuccessStatement(text: string): boolean {
 }
 
 function hasToolSpecificValidationSubject(text: string): boolean {
-  return /\b(?:pytest|ruff|mypy)\b/i.test(text);
+  return /\b(?:pytest|ruff|mypy|prettier)\b/i.test(text);
 }
 
 function matcher(label: string, pattern: RegExp): ScopeMatcher {
