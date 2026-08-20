@@ -337,8 +337,12 @@ function isQuantifiedValidationClaim(claim: string): boolean {
     `\\b\\d+\\s*\\/\\s*\\d+\\s+(?:(?:tests?|checks?|jobs?|steps?)\\s+)?${success}\\b`,
     "i"
   );
+  const diagnosticCount = /\b\d[\d,]*\s+(?:errors?|warnings?|issues?|findings?|diagnostics?)\b/i;
 
-  return countedResult.test(claim) || fileAndTestCounts.test(claim) || slashResult.test(claim);
+  return countedResult.test(claim)
+    || fileAndTestCounts.test(claim)
+    || slashResult.test(claim)
+    || diagnosticCount.test(claim);
 }
 
 function dedupeChecks(checks: CheckRunSummary[]): CheckRunSummary[] {
