@@ -45,6 +45,7 @@ function toolSpecificValidationMatchers(text: string): ScopeMatcher[] {
   if (/\bpytest\b/i.test(text)) tools.push(matcher("pytest", /\bpytest\b/i));
   if (/\bruff\b/i.test(text)) tools.push(matcher("ruff", /\bruff\b/i));
   if (/\bmypy\b/i.test(text)) tools.push(matcher("mypy", /\bmypy\b/i));
+  if (/\bflake8\b/i.test(text)) tools.push(matcher("flake8", /\bflake8\b/i));
   if (/\bprettier\b/i.test(text)) tools.push(matcher("prettier", /\bprettier\b/i));
   if (/\bbiome\b/i.test(text)) tools.push(matcher("biome", /\bbiome\b/i));
   if (/\bblack\b(?![- ]box)/i.test(text)) tools.push(matcher("black", /\bblack\b(?![- ]box)/i));
@@ -396,7 +397,8 @@ function assessConfiguredRequiredChecks(
 
 export function isGenericCiSuccessStatement(text: string): boolean {
   return hasSuccessLanguage(text)
-    && /\b(?:ci|continuous integration|workflow|checks?)\b/i.test(text);
+    && (/\b(?:ci|continuous integration|workflow|checks?)\b/i.test(text)
+      || toolSpecificValidationMatchers(text).length > 0);
 }
 
 export function assessGenericCiSuccess(
