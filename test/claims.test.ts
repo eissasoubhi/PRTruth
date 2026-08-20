@@ -46,11 +46,13 @@ describe("extractCompletionClaims", () => {
     ]);
   });
 
-  it("extracts real-world verification sections without treating nearby test descriptions as claims", () => {
+  it("extracts executed results under Tests without treating test descriptions as claims", () => {
     const claims = extractCompletionClaims(`
 ## Tests
 - sends the copy on the first paid sale when live
 - no send on a later sale
+- gateway + history tests: 137 passed, 0 failed
+- full affected suite: tests pass
 
 ## Verification
 - pnpm vitest run first-sale-text.test.ts — 7/7 pass
@@ -62,6 +64,8 @@ describe("extractCompletionClaims", () => {
 `);
 
     expect(claims.map((claim) => claim.text)).toEqual([
+      "gateway + history tests: 137 passed, 0 failed",
+      "full affected suite: tests pass",
       "pnpm vitest run first-sale-text.test.ts — 7/7 pass",
       "pnpm typecheck — pass",
       "pnpm biome check — pass"
