@@ -49,6 +49,7 @@ function toolSpecificValidationMatchers(text: string): ScopeMatcher[] {
   if (/\bprettier\b/i.test(text)) tools.push(matcher("prettier", /\bprettier\b/i));
   if (/\bbiome\b/i.test(text)) tools.push(matcher("biome", /\bbiome\b/i));
   if (/\bphpstan\b/i.test(text)) tools.push(matcher("phpstan", /\bphpstan\b/i));
+  if (/\bpsalm\b/i.test(text)) tools.push(matcher("psalm", /\bpsalm\b/i));
   if (/\bblack\b(?![- ]box)/i.test(text)) tools.push(matcher("black", /\bblack\b(?![- ]box)/i));
   if (/\bisort\b/i.test(text)) tools.push(matcher("isort", /\bisort\b/i));
   return tools;
