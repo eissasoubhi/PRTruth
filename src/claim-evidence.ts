@@ -324,8 +324,21 @@ function isSpecificTestCoverageClaim(claim: string): boolean {
 }
 
 function isQuantifiedValidationClaim(claim: string): boolean {
-  return /\b\d[\d,]*\s+(?:test\s+files?|tests?|checks?|jobs?|steps?)\s+(?:pass(?:ed|ing)?|succeed(?:ed|ing)?|successful(?:ly)?)\b/i.test(claim)
-    || /\b\d+\s*\/\s*\d+\s+(?:(?:tests?|checks?|jobs?|steps?)\s+)?(?:pass(?:ed|ing)?|succeed(?:ed|ing)?|successful(?:ly)?)\b/i.test(claim);
+  const success = "(?:pass(?:ed|ing)?|succeed(?:ed|ing)?|successful(?:ly)?)";
+  const countedResult = new RegExp(
+    `(?:^|[—–:;,([=]\\s*)\\d[\\d,]*\\s+(?:test\\s+files?|tests?|checks?|jobs?|steps?)\\s+${success}\\b`,
+    "i"
+  );
+  const fileAndTestCounts = new RegExp(
+    `\\b\\d[\\d,]*\\s+(?:test\\s+)?files?\\s*\\/\\s*\\d[\\d,]*\\s+tests?\\s+${success}\\b`,
+    "i"
+  );
+  const slashResult = new RegExp(
+    `\\b\\d+\\s*\\/\\s*\\d+\\s+(?:(?:tests?|checks?|jobs?|steps?)\\s+)?${success}\\b`,
+    "i"
+  );
+
+  return countedResult.test(claim) || fileAndTestCounts.test(claim) || slashResult.test(claim);
 }
 
 function dedupeChecks(checks: CheckRunSummary[]): CheckRunSummary[] {
