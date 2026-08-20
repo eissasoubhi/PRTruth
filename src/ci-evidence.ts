@@ -46,6 +46,7 @@ function toolSpecificValidationMatchers(text: string): ScopeMatcher[] {
   if (/\bruff\b/i.test(text)) tools.push(matcher("ruff", /\bruff\b/i));
   if (/\bmypy\b/i.test(text)) tools.push(matcher("mypy", /\bmypy\b/i));
   if (/\bprettier\b/i.test(text)) tools.push(matcher("prettier", /\bprettier\b/i));
+  if (/\bbiome\b/i.test(text)) tools.push(matcher("biome", /\bbiome\b/i));
   if (/\bblack\b(?![- ]box)/i.test(text)) tools.push(matcher("black", /\bblack\b(?![- ]box)/i));
   if (/\bisort\b/i.test(text)) tools.push(matcher("isort", /\bisort\b/i));
   return tools;
