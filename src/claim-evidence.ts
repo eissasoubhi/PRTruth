@@ -303,6 +303,7 @@ function checkMatchesCategory(check: CheckRunSummary, category: CheckCategory, c
   }
   if (category === "lint") {
     if (/\beslint\b/i.test(claim)) return /\beslint\b/.test(name);
+    if (/\bphpstan\b/i.test(claim)) return /\bphpstan\b/.test(name);
     return /\blint\b|eslint|phpstan|static analysis/.test(name);
   }
   if (category === "type") {
