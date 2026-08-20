@@ -33,14 +33,85 @@ function isRequiredChecksSuccessStatement(text: string): boolean {
     || /\b(?:ci|checks?|workflows?|jobs?)\b[^.\n]{0,80}\brequired\b/i.test(text);
 }
 
-function hasToolSpecificValidationSubject(text: string): boolean {
-  return /\b(?:pytest|ruff|mypy|prettier)\b/i.test(text);
-}
-
 function matcher(label: string, pattern: RegExp): ScopeMatcher {
   return {
     label,
     matches: (name: string) => pattern.test(name)
+  };
+}
+
+function toolSpecificValidationMatchers(text: string): ScopeMatcher[] {
+  const tools: ScopeMatcher[] = [];
+  if (/\bpytest\b/i.test(text)) tools.push(matcher("pytest", /\bpytest\b/i));
+  if (/\bruff\b/i.test(text)) tools.push(matcher("ruff", /\bruff\b/i));
+  if (/\bmypy\b/i.test(text)) tools.push(matcher("mypy", /\bmypy\b/i));
+  if (/\bprettier\b/i.test(text)) tools.push(matcher("prettier", /\bprettier\b/i));
+  if (/\bblack\b(?![- ]box)/i.test(text)) tools.push(matcher("black", /\bblack\b(?![- ]box)/i));
+  if (/\bisort\b/i.test(text)) tools.push(matcher("isort", /\bisort\b/i));
+  return tools;
+}
+
+function dedupeChecks(checks: CheckRunSummary[]): CheckRunSummary[] {
+  const seen = new Set<string>();
+  return checks.filter((check) => {
+    const key = `${check.name}\u0000${check.scope ?? ""}\u0000${check.status}\u0000${check.conclusion ?? ""}\u0000${check.htmlUrl ?? ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function assessToolSpecificValidation(
+  checks: CheckRunSummary[],
+  tools: ScopeMatcher[]
+): CiEvidenceAssessment {
+  const matchedByTool = tools.map((tool) => ({
+    tool,
+    checks: checks.filter((check) => tool.matches(check.name))
+  }));
+  const matchedChecks = dedupeChecks(matchedByTool.flatMap((entry) => entry.checks));
+  const missing = matchedByTool.filter((entry) => entry.checks.length === 0).map((entry) => entry.tool.label);
+
+  if (missing.length > 0) {
+    return {
+      status: "UNPROVEN",
+      reason: `No matching CI evidence was observed for the named validation tool${missing.length === 1 ? "" : "s"}: ${missing.join(", ")}.`,
+      matchedChecks
+    };
+  }
+
+  const failed = matchedChecks.find((check) => FAILED_CONCLUSIONS.has(check.conclusion ?? ""));
+  if (failed) {
+    return {
+      status: "FAILED",
+      reason: `A matching tool-specific CI check failed: ${failed.name}.`,
+      matchedChecks
+    };
+  }
+
+  const incomplete = matchedChecks.find(
+    (check) => check.status !== "completed" || check.conclusion === null
+  );
+  if (incomplete) {
+    return {
+      status: "UNPROVEN",
+      reason: `A matching tool-specific CI check has not completed: ${incomplete.name}.`,
+      matchedChecks
+    };
+  }
+
+  if (matchedChecks.every((check) => check.conclusion === "success")) {
+    return {
+      status: "PROVEN",
+      reason: "Every named validation tool was observed in matching CI evidence and completed successfully.",
+      matchedChecks
+    };
+  }
+
+  return {
+    status: "UNPROVEN",
+    reason: "Matching tool-specific CI evidence did not provide a definitive success or failure result.",
+    matchedChecks
   };
 }
 
@@ -334,12 +405,9 @@ export function assessGenericCiSuccess(
 ): CiEvidenceAssessment | null {
   if (!isGenericCiSuccessStatement(text)) return null;
 
-  if (hasToolSpecificValidationSubject(text)) {
-    return {
-      status: "UNPROVEN",
-      reason: "A tool-specific validation claim requires matching tool evidence, not only aggregate CI status.",
-      matchedChecks: []
-    };
+  const toolRequirements = toolSpecificValidationMatchers(text);
+  if (toolRequirements.length > 0) {
+    return assessToolSpecificValidation(checks, toolRequirements);
   }
 
   const topLevelChecks = checks.filter((check) => check.scope !== "step");
