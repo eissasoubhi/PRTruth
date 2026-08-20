@@ -69,6 +69,32 @@ describe("extractCompletionClaims", () => {
     expect(claims.every((claim) => claim.source === "claim-section")).toBe(true);
   });
 
+  it("extracts only high-confidence results from Testing and Test plan sections", () => {
+    const claims = extractCompletionClaims(`
+## Testing
+- outcome matching for withdrawn decisions
+- rollback behavior for bookmarks
+npm test 598/598 pass. npm run lint passes. Typecheck passes.
+
+## Test plan
+- [x] pnpm verify
+- reviewer should inspect the visual result
+- Build passes on Node 22
+
+## Summary
+- Tests are described here but this is not a validation result
+`);
+
+    expect(claims.map((claim) => claim.text)).toEqual([
+      "npm test 598/598 pass. npm run lint passes. Typecheck passes.",
+      "pnpm verify",
+      "Build passes on Node 22"
+    ]);
+    expect(claims[0]?.source).toBe("claim-section");
+    expect(claims[1]?.source).toBe("checked-checklist");
+    expect(claims[2]?.source).toBe("claim-section");
+  });
+
   it("captures high-confidence validation prose used by real project pull requests", () => {
     const claims = extractCompletionClaims(`
 ## Validation
