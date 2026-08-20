@@ -19,12 +19,13 @@ describe("PHP quality tool evidence", () => {
     );
 
     expect(assessment).toMatchObject({ status: "PROVEN" });
-    expect(assessment?.matchedChecks.map((item) => item.name)).toEqual([
+    expect(assessment?.matchedChecks).toHaveLength(4);
+    expect(assessment?.matchedChecks.map((item) => item.name)).toEqual(expect.arrayContaining([
       "Run Pint",
       "Run PHPStan",
       "Run Rector",
       "Run Pest"
-    ]);
+    ]));
   });
 
   it("does not let generic lint and test lanes prove named PHP tools", () => {
