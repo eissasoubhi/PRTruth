@@ -77,7 +77,12 @@ function toolSpecificValidationMatchers(text: string): ScopeMatcher[] {
   if (/\bpest\b/i.test(text)) tools.push(matcher("pest", /\bpest\b/i));
   if (/\bblack\b(?![- ]box)/i.test(text)) tools.push(matcher("black", /\bblack\b(?![- ]box)/i));
   if (/\bisort\b/i.test(text)) tools.push(matcher("isort", /\bisort\b/i));
-  return tools;
+if (/\bcodespell\b/i.test(text)) tools.push(matcher("codespell", /\bcodespell\b/i));
+if (/\bpylint\b/i.test(text)) tools.push(matcher("pylint", /\bpylint\b/i));
+if (/\bpyink\b/i.test(text)) tools.push(matcher("pyink", /\bpyink\b/i));
+if (/\bmdformat\b/i.test(text)) tools.push(matcher("mdformat", /\bmdformat\b/i));
+if (/\byamllint\b/i.test(text)) tools.push(matcher("yamllint", /\byamllint\b/i));
+return tools;
 }
 
 function dedupeChecks(checks: CheckRunSummary[]): CheckRunSummary[] {
