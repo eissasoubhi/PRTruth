@@ -52,6 +52,16 @@ jobs:
           CLI_VERSION="$(npx -y "prtruth@${EXPECTED_VERSION}" --version)"
           test "${CLI_VERSION}" = "${EXPECTED_VERSION}"
 
+      - name: Run current composite Action against InsForge
+        uses: ./
+        with:
+          repo: InsForge/InsForge
+          issue: 1990
+          pr: 1991
+          policy: report-only
+          github_summary: "false"
+          token: ""
+
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile --prod=false --force
 
