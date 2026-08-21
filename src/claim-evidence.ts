@@ -361,8 +361,9 @@ function isQuantifiedValidationClaim(claim: string): boolean {
     || durationMetric.test(claim);
 }
 
-function isNamedToolAssessment(assessment: ClaimEvidenceAssessment | null): boolean {
-  return assessment !== null && /named validation tool|tool-specific/i.test(assessment.reason);
+function hasMultipleNamedToolRequirements(claim: string): boolean {
+  const probe = assessGenericCiSuccess(claim, []);
+  return probe !== null && /named validation tools:/i.test(probe.reason);
 }
 
 function dedupeChecks(checks: CheckRunSummary[]): CheckRunSummary[] {
@@ -476,8 +477,9 @@ export function assessCompletionClaim(
     };
   }
 
-  const namedToolAssessment = assessGenericCiSuccess(claim, checks);
-  const namedToolEvidence = isNamedToolAssessment(namedToolAssessment) ? namedToolAssessment : null;
+  const namedToolEvidence = hasMultipleNamedToolRequirements(claim)
+    ? assessGenericCiSuccess(claim, checks)
+    : null;
   if (namedToolEvidence && namedToolEvidence.status !== "PROVEN") {
     return namedToolEvidence;
   }
