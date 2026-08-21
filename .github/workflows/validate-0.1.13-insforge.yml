@@ -1,0 +1,109 @@
+name: Validate 0.1.13 + InsForge dogfood
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/validate-0.1.13-insforge.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Verify exact public npm package
+        shell: bash
+        env:
+          NPM_CONFIG_USERCONFIG: /dev/null
+          NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+        run: |
+          set -euo pipefail
+          EXPECTED_VERSION="0.1.13"
+          PUBLISHED_VERSION="$(npm view "prtruth@${EXPECTED_VERSION}" version --silent)"
+          LATEST_VERSION="$(npm view prtruth dist-tags.latest --silent)"
+          test "${PUBLISHED_VERSION}" = "${EXPECTED_VERSION}"
+          test "${LATEST_VERSION}" = "${EXPECTED_VERSION}"
+          TEMP_DIR="$(mktemp -d)"
+          trap 'rm -rf "${TEMP_DIR}"' EXIT
+          cd "${TEMP_DIR}"
+          CLI_VERSION="$(npx -y "prtruth@${EXPECTED_VERSION}" --version)"
+          test "${CLI_VERSION}" = "${EXPECTED_VERSION}"
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build current PRTruth
+        run: pnpm build
+
+      - name: Run current PRTruth against InsForge issue and PR
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo InsForge/InsForge \
+            --issue 1990 \
+            --pr 1991 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/insforge-1990-1991.json
+
+      - name: Compare with independent oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/insforge-1990-1991.json', 'utf8')
+          ).report;
+
+          if (report.issueNumber !== 1990) {
+            throw new Error(`Expected issue #1990, got #${report.issueNumber}`);
+          }
+          if (!Array.isArray(report.checks) || report.checks.length === 0) {
+            throw new Error('Expected observable GitHub CI evidence');
+          }
+
+          const countClaim = (report.claimResults ?? []).find((result) =>
+            result.claim?.text?.includes('2 passed, 0 failed')
+          );
+          if (!countClaim) {
+            throw new Error('Expected executed test-count claim from How did you test this change?');
+          }
+          if (countClaim.status !== 'UNPROVEN') {
+            throw new Error(
+              `Exact 2 passed / 0 failed count must remain UNPROVEN without count-bearing evidence, got ${countClaim.status}`
+            );
+          }
+
+          const unitTests = report.checks.find((check) => check.name === 'Unit Tests');
+          if (!unitTests || unitTests.conclusion !== 'success') {
+            throw new Error('Expected the exact PR head to expose a successful Unit Tests check');
+          }
+
+          console.log(`InsForge issue: #${report.issueNumber}`);
+          console.log(`InsForge verdict: ${report.verdict}`);
+          console.log(`Quantitative claim: ${countClaim.status}`);
+          NODE
