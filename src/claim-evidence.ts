@@ -361,6 +361,11 @@ function isQuantifiedValidationClaim(claim: string): boolean {
     || durationMetric.test(claim);
 }
 
+function hasMultipleNamedToolRequirements(claim: string): boolean {
+  const probe = assessGenericCiSuccess(claim, []);
+  return probe !== null && /named validation tools:/i.test(probe.reason);
+}
+
 function dedupeChecks(checks: CheckRunSummary[]): CheckRunSummary[] {
   const seen = new Set<string>();
   return checks.filter((check) => {
@@ -472,6 +477,16 @@ export function assessCompletionClaim(
     };
   }
 
+  const namedToolEvidence = hasMultipleNamedToolRequirements(claim)
+    ? assessGenericCiSuccess(claim, checks)
+    : null;
+  if (namedToolEvidence && namedToolEvidence.status !== "PROVEN") {
+    return namedToolEvidence;
+  }
+  if (namedToolEvidence && categories.length === 1 && categories[0] === "lint") {
+    return namedToolEvidence;
+  }
+
   const scopes = claimScopes(claim);
   const runtimeMatrices = runtimeMatrixScopes(scopes);
   const matrixScopes = scopes.filter((scope) =>
@@ -512,7 +527,10 @@ export function assessCompletionClaim(
   const missing = matchesByCategory
     .filter((entry) => entry.checks.length === 0 || entry.missingMatrixScopes.length > 0)
     .map((entry) => entry.category);
-  const matchedChecks = dedupeChecks(matchesByCategory.flatMap((entry) => entry.checks));
+  const matchedChecks = dedupeChecks([
+    ...(namedToolEvidence?.matchedChecks ?? []),
+    ...matchesByCategory.flatMap((entry) => entry.checks)
+  ]);
 
   if (missing.length > 0) {
     const scopeSuffix = scopes.length > 0 ? ` for the claimed scope (${scopeLabel(scopes)})` : "";
