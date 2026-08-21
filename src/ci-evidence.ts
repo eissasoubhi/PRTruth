@@ -61,6 +61,7 @@ function toolSpecificValidationMatchers(text: string): ScopeMatcher[] {
   if (/\bcargo[- ]deny\b/i.test(text)) tools.push(matcher("cargo-deny", /\bcargo[- ]deny\b/i));
   if (/\bcargo[- ]machete\b/i.test(text)) tools.push(matcher("cargo-machete", /\bcargo[- ]machete\b/i));
   if (/\brustsec\b|\bcargo[- ]audit\b/i.test(text)) tools.push(matcher("rustsec/cargo-audit", /\brustsec\b|\bcargo[- ]audit\b/i));
+  if (/\bcargo\s+check\b/i.test(text)) tools.push(matcher("cargo check", /\bcargo\s+check\b/i));
   if (/\bprettier\b/i.test(text)) tools.push(matcher("prettier", /\bprettier\b/i));
   if (/\bbiome\b/i.test(text)) tools.push(matcher("biome", /\bbiome\b/i));
   if (/\bgitleaks\b/i.test(text)) tools.push(matcher("gitleaks", /\bgitleaks\b/i));
