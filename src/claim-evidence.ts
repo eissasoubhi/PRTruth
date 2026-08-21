@@ -58,7 +58,7 @@ function claimCategories(claim: string): CheckCategory[] {
 
   if (/\binstall(?:ation|ed|s)?\b|\bdependencies\b/i.test(claim)) categories.push("install");
   if (/\btests?\b|\btest suite\b/i.test(claim)) categories.push("test");
-  if (/\blint(?:ing)?\b|eslint|phpstan|static analysis/i.test(claim)) categories.push("lint");
+  if (/\blint(?:ing)?\b|eslint|phpstan|clippy|static analysis/i.test(claim)) categories.push("lint");
   if (/type[ -]?check|typescript/i.test(claim)) categories.push("type");
   if (/\bbuild\b|compile|compilation/i.test(claim)) categories.push("build");
 
@@ -304,6 +304,7 @@ function checkMatchesCategory(check: CheckRunSummary, category: CheckCategory, c
   if (category === "lint") {
     if (/\beslint\b/i.test(claim)) return /\beslint\b/.test(name);
     if (/\bphpstan\b/i.test(claim)) return /\bphpstan\b/.test(name);
+    if (/\bclippy\b/i.test(claim)) return /\b(?:cargo\s+)?clippy\b/.test(name);
     return /\blint\b|eslint|phpstan|static analysis/.test(name);
   }
   if (category === "type") {
