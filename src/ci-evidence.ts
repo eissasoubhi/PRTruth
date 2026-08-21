@@ -83,7 +83,7 @@ function dedupeChecks(checks: CheckRunSummary[]): CheckRunSummary[] {
 
 function isToolSetupNoise(check: CheckRunSummary): boolean {
   return /\b(?:install|setup|set up|download|cache)\b/i.test(check.name)
-    || /^post\b/i.test(check.name.trim());
+    || /(?:^|\/\s*)post\b/i.test(check.name.trim());
 }
 
 function selectToolEvidence(checks: CheckRunSummary[], tool: ScopeMatcher): CheckRunSummary[] {

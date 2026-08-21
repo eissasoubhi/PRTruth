@@ -1,0 +1,107 @@
+name: Security scanner evidence dogfood
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "41 7 * * 3"
+  pull_request:
+    paths:
+      - ".github/workflows/security-scanner-dogfood.yml"
+      - "src/ci-evidence.ts"
+      - "src/claims.ts"
+      - "src/github-evidence.ts"
+      - "src/verification.ts"
+
+permissions:
+  contents: read
+
+jobs:
+  openshield-security-evidence:
+    name: OpenShield scanner evidence oracle
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real OpenShield history
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo openshield-org/openshield \
+            --pr 293 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/openshield-293.json
+
+      - name: Compare PRTruth with independent scanner oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/openshield-293.json', 'utf8')
+          ).report;
+
+          const expectations = [
+            { fragment: 'Bandit reports no medium or high findings', evidence: 'bandit' },
+            { fragment: 'Pip Audit reports no known vulnerabilities', evidence: 'pip-audit' },
+            { fragment: 'Semgrep security-audit', evidence: 'semgrep' },
+            { fragment: 'Gitleaks reports no secrets', evidence: 'gitleaks' }
+          ];
+
+          for (const { fragment, evidence } of expectations) {
+            const result = (report.claimResults ?? []).find((entry) =>
+              entry.claim?.text?.includes(fragment)
+            );
+            if (!result) {
+              throw new Error(`OpenShield: expected extracted claim containing ${fragment}`);
+            }
+            if (result.status !== 'PROVEN') {
+              throw new Error(
+                `OpenShield: ${fragment} should be PROVEN from named scanner evidence, got ${result.status}: ${result.reason}`
+              );
+            }
+            if (!result.evidence?.some((item) =>
+              item.kind === 'ci' && item.summary.toLowerCase().includes(evidence)
+            )) {
+              throw new Error(`OpenShield: ${fragment} lacks ${evidence}-named CI evidence`);
+            }
+          }
+
+          console.log(`OpenShield verdict: ${report.verdict}`);
+          console.log('Named scanner claims matched the independent evidence oracle.');
+          NODE
+
+      - name: Upload dogfood report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: prtruth-openshield-security-oracle
+          path: dogfood-results/openshield-293.json
+          if-no-files-found: warn
