@@ -65,6 +65,7 @@ function toolSpecificValidationMatchers(text: string): ScopeMatcher[] {
   if (/\bgit\s+diff\s+--check\b/i.test(text)) tools.push(matcher("git diff --check", /\bgit\s+diff\s+--check\b/i));
   if (/\bprettier\b/i.test(text)) tools.push(matcher("prettier", /\bprettier\b/i));
   if (/\bbiome\b/i.test(text)) tools.push(matcher("biome", /\bbiome\b/i));
+  if (/\boxlint\b/i.test(text)) tools.push(matcher("oxlint", /\boxlint\b/i));
   if (/\bgitleaks\b/i.test(text)) tools.push(matcher("gitleaks", /\bgitleaks\b/i));
   if (/\bsemgrep\b/i.test(text)) tools.push(matcher("semgrep", /\bsemgrep\b/i));
   if (/\bbandit\b/i.test(text)) tools.push(matcher("bandit", /\bbandit\b/i));
