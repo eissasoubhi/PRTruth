@@ -70,6 +70,8 @@ function toolSpecificValidationMatchers(text: string): ScopeMatcher[] {
   if (/\bmarkdownlint(?:-cli(?:2)?)?\b/i.test(text)) tools.push(matcher("markdownlint", /\bmarkdownlint(?:-cli(?:2)?)?\b/i));
   if (/\bbiome\b/i.test(text)) tools.push(matcher("biome", /\bbiome\b/i));
   if (/\boxlint\b/i.test(text)) tools.push(matcher("oxlint", /\boxlint\b/i));
+  if (/\bswiftlint\b/i.test(text)) tools.push(matcher("swiftlint", /\bswiftlint\b/i));
+  if (/\bswiftformat\b/i.test(text)) tools.push(matcher("swiftformat", /\bswiftformat\b/i));
   if (/\bgitleaks\b/i.test(text)) tools.push(matcher("gitleaks", /\bgitleaks\b/i));
   if (/\bsemgrep\b/i.test(text)) tools.push(matcher("semgrep", /\bsemgrep\b/i));
   if (/\bbandit\b/i.test(text)) tools.push(matcher("bandit", /\bbandit\b/i));
