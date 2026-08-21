@@ -99,6 +99,23 @@ npm test 598/598 pass. npm run lint passes. Typecheck passes.
     expect(claims[2]?.source).toBe("claim-section");
   });
 
+  it("extracts explicit pytest results from How it was tested without absorbing nearby prose", () => {
+    const claims = extractCompletionClaims(`
+## How it was tested
+
+- uv run pytest tests/test_check_branch_push_gate_inprocess.py -q — 34 passed.
+- verified the fallback manually against a fake server
+
+## Review focus
+- the parser should fail toward the REST read
+`);
+
+    expect(claims.map((claim) => claim.text)).toEqual([
+      "uv run pytest tests/test_check_branch_push_gate_inprocess.py -q — 34 passed."
+    ]);
+    expect(claims[0]?.source).toBe("claim-section");
+  });
+
   it("accepts explicit zero-failure validation summaries", () => {
     const claims = extractCompletionClaims(`
 ## Validation
