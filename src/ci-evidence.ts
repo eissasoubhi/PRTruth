@@ -81,15 +81,27 @@ function dedupeChecks(checks: CheckRunSummary[]): CheckRunSummary[] {
   });
 }
 
+function isToolSetupNoise(check: CheckRunSummary): boolean {
+  return /\b(?:install|setup|set up|download|cache)\b/i.test(check.name)
+    || /^post\b/i.test(check.name.trim());
+}
+
+function selectToolEvidence(checks: CheckRunSummary[], tool: ScopeMatcher): CheckRunSummary[] {
+  const meaningful = checks.filter((check) => tool.matches(check.name) && !isToolSetupNoise(check));
+  const steps = meaningful.filter((check) => check.scope === "step");
+  return steps.length > 0 ? steps : meaningful.filter((check) => check.scope !== "step");
+}
+
 function assessToolSpecificValidation(
   checks: CheckRunSummary[],
   tools: ScopeMatcher[]
 ): CiEvidenceAssessment {
   const matchedByTool = tools.map((tool) => ({
     tool,
-    checks: checks.filter((check) => tool.matches(check.name))
+    checks: selectToolEvidence(checks, tool)
   }));
-  const matchedChecks = dedupeChecks(matchedByTool.flatMap((entry) => entry.checks));
+  const allMatchedChecks = dedupeChecks(matchedByTool.flatMap((entry) => entry.checks));
+  const matchedChecks = allMatchedChecks.filter((check) => check.conclusion !== "skipped");
   const missing = matchedByTool.filter((entry) => entry.checks.length === 0).map((entry) => entry.tool.label);
 
   if (missing.length > 0) {
@@ -100,7 +112,7 @@ function assessToolSpecificValidation(
     };
   }
 
-  const failed = matchedChecks.find((check) => FAILED_CONCLUSIONS.has(check.conclusion ?? ""));
+  const failed = allMatchedChecks.find((check) => FAILED_CONCLUSIONS.has(check.conclusion ?? ""));
   if (failed) {
     return {
       status: "FAILED",
@@ -109,7 +121,7 @@ function assessToolSpecificValidation(
     };
   }
 
-  const incomplete = matchedChecks.find(
+  const incomplete = allMatchedChecks.find(
     (check) => check.status !== "completed" || check.conclusion === null
   );
   if (incomplete) {
@@ -120,17 +132,20 @@ function assessToolSpecificValidation(
     };
   }
 
-  if (matchedChecks.every((check) => check.conclusion === "success")) {
+  const withoutSuccess = matchedByTool
+    .filter((entry) => !entry.checks.some((check) => check.conclusion === "success"))
+    .map((entry) => entry.tool.label);
+  if (withoutSuccess.length > 0) {
     return {
-      status: "PROVEN",
-      reason: "Every named validation tool was observed in matching CI evidence and completed successfully.",
+      status: "UNPROVEN",
+      reason: `No successful executable CI evidence was observed for the named validation tool${withoutSuccess.length === 1 ? "" : "s"}: ${withoutSuccess.join(", ")}.`,
       matchedChecks
     };
   }
 
   return {
-    status: "UNPROVEN",
-    reason: "Matching tool-specific CI evidence did not provide a definitive success or failure result.",
+    status: "PROVEN",
+    reason: "Every named validation tool was observed in matching executable CI evidence and completed successfully.",
     matchedChecks
   };
 }
