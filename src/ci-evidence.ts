@@ -29,7 +29,9 @@ function hasSuccessLanguage(text: string): boolean {
 }
 
 function hasToolSuccessLanguage(text: string): boolean {
-  return hasSuccessLanguage(text) || /\bclean\b/i.test(text);
+  return hasSuccessLanguage(text)
+    || /\bclean\b/i.test(text)
+    || /\b(?:reports?|reported|finds?|found)\s+no\b[^.\n]{0,80}\b(?:findings?|issues?|vulnerabilit(?:y|ies)|secrets?)\b/i.test(text);
 }
 
 function isRequiredChecksSuccessStatement(text: string): boolean {
@@ -54,6 +56,8 @@ function toolSpecificValidationMatchers(text: string): ScopeMatcher[] {
   if (/\bbiome\b/i.test(text)) tools.push(matcher("biome", /\bbiome\b/i));
   if (/\bgitleaks\b/i.test(text)) tools.push(matcher("gitleaks", /\bgitleaks\b/i));
   if (/\bsemgrep\b/i.test(text)) tools.push(matcher("semgrep", /\bsemgrep\b/i));
+  if (/\bbandit\b/i.test(text)) tools.push(matcher("bandit", /\bbandit\b/i));
+  if (/\bpip[- ]audit\b/i.test(text)) tools.push(matcher("pip-audit", /\bpip[- ]audit\b/i));
   if (/\brubocop\b/i.test(text)) tools.push(matcher("rubocop", /\brubocop\b/i));
   if (/\bstandard(?:rb| ruby)\b/i.test(text)) tools.push(matcher("standardrb", /\bstandard(?:rb)?\b/i));
   if (/\bphpcs\b/i.test(text)) tools.push(matcher("phpcs", /\bphpcs\b/i));
