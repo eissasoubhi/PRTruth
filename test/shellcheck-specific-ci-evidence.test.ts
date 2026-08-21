@@ -20,7 +20,7 @@ describe("ShellCheck-specific CI evidence", () => {
 
     expect(assessment).toMatchObject({ status: "PROVEN" });
     expect(assessment?.matchedChecks.map((item) => item.name)).toEqual([
-      "shellcheck / Run shellcheck bootstrap/install.sh checks/*.sh"
+      "shellcheck"
     ]);
   });
 
