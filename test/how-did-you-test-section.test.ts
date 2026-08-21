@@ -24,13 +24,13 @@ None.
     const claims = extractCompletionClaims(`
 ## How did you test this change?
 
-- ESLint checks passed.
+- 2 tests passed.
 `);
 
     expect(claims).toEqual([
       {
         id: "claim-1",
-        text: "ESLint checks passed.",
+        text: "2 tests passed.",
         source: "claim-section"
       }
     ]);
