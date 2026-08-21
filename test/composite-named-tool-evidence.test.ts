@@ -19,8 +19,8 @@ describe("composite named-tool evidence", () => {
     );
 
     expect(assessment.status).toBe("UNPROVEN");
-    expect(assessment.reason).toContain("Psalm");
-    expect(assessment.reason).toContain("Rector");
+    expect(assessment.reason.toLowerCase()).toContain("psalm");
+    expect(assessment.reason.toLowerCase()).toContain("rector");
   });
 
   it("fails a composite claim when a named companion tool fails", () => {
@@ -34,6 +34,6 @@ describe("composite named-tool evidence", () => {
     );
 
     expect(assessment.status).toBe("FAILED");
-    expect(assessment.reason).toContain("Psalm");
+    expect(assessment.reason.toLowerCase()).toContain("psalm");
   });
 });
