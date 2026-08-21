@@ -53,6 +53,8 @@ function toolSpecificValidationMatchers(text: string): ScopeMatcher[] {
   if (/\bmypy\b/i.test(text)) tools.push(matcher("mypy", /\bmypy\b/i));
   if (/\bflake8\b/i.test(text)) tools.push(matcher("flake8", /\bflake8\b/i));
   if (/\bshellcheck\b/i.test(text)) tools.push(matcher("shellcheck", /\bshellcheck\b/i));
+  if (/\bhadolint\b/i.test(text)) tools.push(matcher("hadolint", /\bhadolint\b/i));
+  if (/\bactionlint\b/i.test(text)) tools.push(matcher("actionlint", /\bactionlint\b/i));
   if (/\bgolangci[- ]lint\b/i.test(text)) tools.push(matcher("golangci-lint", /\bgolangci[- ]lint\b/i));
   if (/\bprettier\b/i.test(text)) tools.push(matcher("prettier", /\bprettier\b/i));
   if (/\bbiome\b/i.test(text)) tools.push(matcher("biome", /\bbiome\b/i));
