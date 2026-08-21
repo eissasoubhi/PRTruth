@@ -10,22 +10,22 @@ PRTruth is an open-source CLI and GitHub Action that verifies whether **pull-req
 
 **Deterministic. Evidence-first. No LLM required for the verdict.**
 
-![PRTruth verifying a real public pull request](docs/assets/prtruth-demo.svg)
+![PRTruth evidence demo](docs/assets/prtruth-demo.svg)
 
-## Try it on a real pull request
+## Try it on a pull request
 
-No install. No account. No GitHub token required for this public example:
+No install is required. For any public repository, start in report-only mode:
 
 ```bash
 npx -y prtruth@latest verify \
-  --repo eissasoubhi/ai-saas-factory \
-  --pr 3 \
+  --repo owner/repository \
+  --pr 456 \
   --policy report-only
 ```
 
-This is a real merged PR linked to a real issue. The PR says its self-hosted Linux ARM64 validation passes. PRTruth deliberately keeps stronger claims `UNPROVEN` when the observable GitHub evidence does not prove the claimed business coverage or platform scope.
+If the pull request closes exactly one issue, PRTruth can infer the issue automatically. Otherwise pass `--issue 123` explicitly.
 
-[See the reproducible real-PR walkthrough →](docs/demo.md)
+[See the 60-second walkthrough →](docs/demo.md)
 
 PRTruth returns three deliberately strict states:
 
@@ -331,6 +331,10 @@ pnpm typecheck
 pnpm test
 pnpm build
 ```
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for vulnerability reporting and the security boundaries that matter for evidence integrity.
 
 ## License
 

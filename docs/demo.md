@@ -2,62 +2,24 @@
 
 PRTruth answers a narrow question: **does the evidence around a pull request actually support what the pull request says is done?**
 
-This walkthrough uses a real merged public pull request so the demo is independently inspectable rather than a synthetic happy path.
+This walkthrough is intentionally repository-neutral so you can apply the same steps to any public pull request you want to inspect.
 
-- Issue: [eissasoubhi/ai-saas-factory#1](https://github.com/eissasoubhi/ai-saas-factory/issues/1)
-- Pull request: [eissasoubhi/ai-saas-factory#3](https://github.com/eissasoubhi/ai-saas-factory/pull/3)
-- The PR closes the issue, so PRTruth can infer the issue number automatically.
+![PRTruth evidence demo](assets/prtruth-demo.svg)
 
-![PRTruth real pull request demo](assets/prtruth-demo.svg)
+## 1. Run PRTruth without installing it
 
-## 1. Run the real demo without installing PRTruth
-
-Use `report-only` while exploring so an `UNPROVEN` result does not fail your shell command:
+Pick a public pull request and start with `report-only` so an `UNPROVEN` result does not fail your shell command:
 
 ```bash
 npx -y prtruth@latest verify \
-  --repo eissasoubhi/ai-saas-factory \
-  --pr 3 \
+  --repo owner/repository \
+  --pr 456 \
   --policy report-only
 ```
 
-No GitHub token is required for this basic public-repository check.
+No GitHub token is required for a basic public-repository check.
 
-## 2. What makes this case useful
-
-The issue includes acceptance criteria such as:
-
-- server-side authorization for organization-scoped operations;
-- single-use expiring invitations;
-- automated tests for core identity/workspace flows;
-- environment variables and local setup documented.
-
-The merged PR says:
-
-> Self-hosted Linux ARM64 CI passes install, lint, typecheck, tests and production build.
-
-That sounds strong. PRTruth still keeps claims conservative when GitHub does not expose evidence strong enough for the exact statement.
-
-The repository's recurring real-project dogfood asserts two important boundaries for this exact history:
-
-- **Automated tests for core identity/workspace flows → `UNPROVEN`**. Relevant files can help a reviewer navigate, but generic green CI does not prove that broad business-flow coverage.
-- **The Linux ARM64 validation claim → `UNPROVEN`** when the observed check names do not prove the claimed `linux, arm64` scope. Unscoped green CI is not cited as proof of that stronger platform claim.
-
-This is the point of PRTruth: a green check is evidence for what the check actually demonstrates, not a blank cheque for every sentence in the PR description.
-
-## 3. Read results as evidence, not a score
-
-PRTruth uses three deliberately strict states:
-
-- `PROVEN` — observable evidence supports the requirement or claim.
-- `FAILED` — observable evidence contradicts it or a required check failed.
-- `UNPROVEN` — the available evidence is not strong enough to decide.
-
-A successful test job can prove that the observed tests passed. It does **not** automatically prove authorization behavior, backward compatibility, an exact coverage percentage, a hidden command, or a platform scope that GitHub never exposed.
-
-PRTruth prefers `UNPROVEN` over invented certainty.
-
-## 4. Try PRTruth on your own public pull request
+If the pull request closes exactly one issue, PRTruth can infer that issue automatically. Otherwise provide it explicitly:
 
 ```bash
 npx -y prtruth@latest verify \
@@ -67,9 +29,63 @@ npx -y prtruth@latest verify \
   --policy report-only
 ```
 
-If the pull request contains exactly one closing reference such as `Closes #123`, omit `--issue 123` and PRTruth will infer it.
+## 2. Read the result as evidence, not a score
 
-## 5. Add PRTruth to GitHub Actions
+PRTruth uses three deliberately strict states:
+
+- `PROVEN` — observable evidence supports the requirement or claim.
+- `FAILED` — observable evidence contradicts it or a required check failed.
+- `UNPROVEN` — the available evidence is not strong enough to decide.
+
+For example, imagine an issue contains these acceptance criteria:
+
+```text
+- Export endpoint exists
+- Only admins can export
+- Tests pass
+- No breaking changes
+```
+
+A PR says all four are complete, while GitHub exposes a successful test check. A conservative report can look like this:
+
+```text
+Requirement                         Result
+────────────────────────────────────────────
+Export endpoint exists             ⚠ UNPROVEN
+Only admins can export             ⚠ UNPROVEN
+Tests pass                          ✓ PROVEN
+No breaking changes                ⚠ UNPROVEN
+
+Verdict: NOT PROVEN
+```
+
+The successful test check is good evidence that the observed tests passed. It is not automatically proof of authorization behavior, API compatibility, hidden runtime behavior, or any claim the check did not actually demonstrate.
+
+PRTruth prefers `UNPROVEN` over invented certainty.
+
+## 3. Try claims with different evidence strength
+
+Useful pull requests often mix claims that GitHub can prove directly with claims that need stronger evidence.
+
+Examples:
+
+```text
+Tests pass
+542 tests passed
+Lint passes on Node 22 and Node 24
+No breaking changes
+```
+
+The evidence boundary matters:
+
+- a successful test check can support `Tests pass`;
+- it does not prove the exact number `542` unless that value is observable in the evidence;
+- a Node 22 + Node 24 claim needs observable evidence for both lanes;
+- ordinary green CI does not prove `No breaking changes`.
+
+This is the core PRTruth behavior to look for when evaluating it on your own repositories.
+
+## 4. Add PRTruth to GitHub Actions
 
 Start in non-blocking mode:
 
@@ -97,14 +113,18 @@ jobs:
           policy: report-only
 ```
 
-Observe reports on real pull requests first. Then move to `failures-only` or `strict` only if that fits your merge policy.
+Observe reports on real pull requests first. Then move to `failures-only` or `strict` only if that fits your merge policy:
 
-## 6. Generate machine-readable evidence
+```text
+report-only → observe real reports → failures-only → strict
+```
+
+## 5. Generate machine-readable evidence
 
 ```bash
 npx -y prtruth@latest verify \
-  --repo eissasoubhi/ai-saas-factory \
-  --pr 3 \
+  --repo owner/repository \
+  --pr 456 \
   --policy report-only \
   --format json \
   --output prtruth.json
@@ -112,9 +132,23 @@ npx -y prtruth@latest verify \
 
 PRTruth can also produce terminal, Markdown, and badge output.
 
+Machine-readable output is useful when you want to archive verification evidence, feed it into another review tool, or build a merge/release policy around PRTruth without scraping terminal text.
+
+## 6. What to look for during evaluation
+
+A useful PRTruth trial should include more than a happy path. Try PRs with:
+
+- a green test or build claim that should be `PROVEN`;
+- an exact quantitative claim whose value is not visible and should remain `UNPROVEN`;
+- an explicitly failed matching check that should be `FAILED`;
+- a platform, runtime, browser, service, or named-tool claim where one lane is missing;
+- a broad business/runtime claim that CI does not deterministically prove.
+
+That gives you a much better signal than testing only a PR where everything is green.
+
 ## Why the demo stays conservative
 
-This page intentionally does not turn relevant diff lines into proof and does not claim statuses that the recurring executable dogfood does not assert. The marketing demo and the verifier are held to the same evidence standard.
+This page intentionally does not turn relevant diff lines, textual similarity, or hidden commands into proof. The public walkthrough and the verifier are held to the same evidence standard.
 
 ## Next steps
 
