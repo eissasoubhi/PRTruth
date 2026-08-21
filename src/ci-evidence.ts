@@ -64,6 +64,7 @@ function toolSpecificValidationMatchers(text: string): ScopeMatcher[] {
   if (/\brustsec\b|\bcargo[- ]audit\b/i.test(text)) tools.push(matcher("rustsec/cargo-audit", /\brustsec\b|\bcargo[- ]audit\b/i));
   if (/\bcargo\s+check\b/i.test(text)) tools.push(matcher("cargo check", /\bcargo\s+check\b/i));
   if (/\bgit\s+diff\s+--check\b/i.test(text)) tools.push(matcher("git diff --check", /\bgit\s+diff\s+--check\b/i));
+  if (/\beslint\b/i.test(text)) tools.push(matcher("eslint", /\beslint\b/i));
   if (/\bprettier\b/i.test(text)) tools.push(matcher("prettier", /\bprettier\b/i));
   if (/\bstylelint\b/i.test(text)) tools.push(matcher("stylelint", /\bstylelint\b/i));
   if (/\bmarkdownlint(?:-cli(?:2)?)?\b/i.test(text)) tools.push(matcher("markdownlint", /\bmarkdownlint(?:-cli(?:2)?)?\b/i));
