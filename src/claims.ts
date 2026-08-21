@@ -1,7 +1,7 @@
 import type { CompletionClaim } from "./types.js";
 
 const CLAIM_SECTION = /^(?:#{1,6}\s+)?(?:completion claims?|claims?|validation|verification|what changed|changes|implemented|included|done)\s*:??\s*$/i;
-const VALIDATION_ONLY_SECTION = /^(?:testing|tests?|test plan|test results?|evidence|qa evidence|quality assurance evidence|how it was tested)\s*:??\s*$/i;
+const VALIDATION_ONLY_SECTION = /^(?:testing|tests?|test plan|test results?|evidence|qa evidence|quality assurance evidence|how it was tested|how did you test (?:this (?:code|change)|it))\s*:??\s*\??\s*$/i;
 const HEADING = /^#{1,6}\s+/;
 const VALIDATION_TERM = /\b(?:ci|tests?|test suite|pytest|lint(?:ing)?|type[ -]?check|typescript|build|compile|compilation|install(?:ation)?|dependencies)\b/i;
 const SUCCESS_TERM = /\b(?:pass(?:es|ed|ing)?|succeed(?:s|ed|ing)?|success(?:ful(?:ly)?)?|green|complete(?:s|d|ing)?)\b/i;
