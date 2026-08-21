@@ -1,0 +1,38 @@
+name: npm 0.1.12 public verification
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/npm-0.1.12-public-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  public-consumer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Resolve exact package from public npm
+        env:
+          NPM_CONFIG_USERCONFIG: /dev/null
+          NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+        run: |
+          test "$(npm view prtruth@0.1.12 version --silent)" = "0.1.12"
+          test "$(npm view prtruth dist-tags.latest --silent)" = "0.1.12"
+
+      - name: Execute exact package from neutral consumer
+        env:
+          NPM_CONFIG_USERCONFIG: /dev/null
+          NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+        run: |
+          tmp_dir="$(mktemp -d)"
+          trap 'rm -rf "$tmp_dir"' EXIT
+          cd "$tmp_dir"
+          test "$(npm exec --yes --package=prtruth@0.1.12 -- prtruth --version)" = "0.1.12"
