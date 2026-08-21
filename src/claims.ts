@@ -1,9 +1,9 @@
 import type { CompletionClaim } from "./types.js";
 
 const CLAIM_SECTION = /^(?:#{1,6}\s+)?(?:completion claims?|claims?|validation|verification|what changed|changes|implemented|included|done)\s*:??\s*$/i;
-const VALIDATION_ONLY_SECTION = /^(?:testing|tests?|test plan|test results?|evidence|qa evidence|quality assurance evidence)\s*:??\s*$/i;
+const VALIDATION_ONLY_SECTION = /^(?:testing|tests?|test plan|test results?|evidence|qa evidence|quality assurance evidence|how it was tested)\s*:??\s*$/i;
 const HEADING = /^#{1,6}\s+/;
-const VALIDATION_TERM = /\b(?:ci|tests?|test suite|lint(?:ing)?|type[ -]?check|typescript|build|compile|compilation|install(?:ation)?|dependencies)\b/i;
+const VALIDATION_TERM = /\b(?:ci|tests?|test suite|pytest|lint(?:ing)?|type[ -]?check|typescript|build|compile|compilation|install(?:ation)?|dependencies)\b/i;
 const SUCCESS_TERM = /\b(?:pass(?:es|ed|ing)?|succeed(?:s|ed|ing)?|success(?:ful(?:ly)?)?|green|complete(?:s|d|ing)?)\b/i;
 const FAILURE_TERM = /\b(?:fail(?:s|ed|ing|ure)?|broken|red)\b/i;
 const ZERO_FAILURE_TERM = /\b(?:(?:0|zero)\s+(?:(?:tests?|checks?|jobs?|steps?)\s+)?(?:fail(?:s|ed)?|failures?)|(?:fail(?:ed|ures?)?)\s*[:=]\s*0)\b/gi;
