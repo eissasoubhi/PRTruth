@@ -56,6 +56,7 @@ function toolSpecificValidationMatchers(text: string): ScopeMatcher[] {
   if (/\bhadolint\b/i.test(text)) tools.push(matcher("hadolint", /\bhadolint\b/i));
   if (/\bactionlint\b/i.test(text)) tools.push(matcher("actionlint", /\bactionlint\b/i));
   if (/\bgolangci[- ]lint\b/i.test(text)) tools.push(matcher("golangci-lint", /\bgolangci[- ]lint\b/i));
+  if (/\bclippy\b/i.test(text)) tools.push(matcher("clippy", /\b(?:cargo\s+)?clippy\b/i));
   if (/\bprettier\b/i.test(text)) tools.push(matcher("prettier", /\bprettier\b/i));
   if (/\bbiome\b/i.test(text)) tools.push(matcher("biome", /\bbiome\b/i));
   if (/\bgitleaks\b/i.test(text)) tools.push(matcher("gitleaks", /\bgitleaks\b/i));
