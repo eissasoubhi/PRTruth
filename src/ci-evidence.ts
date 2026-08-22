@@ -31,7 +31,8 @@ function hasSuccessLanguage(text: string): boolean {
 function hasToolSuccessLanguage(text: string): boolean {
   return hasSuccessLanguage(text)
     || /\bclean\b/i.test(text)
-    || /\b(?:reports?|reported|finds?|found)\s+no\b[^.\n]{0,80}\b(?:findings?|issues?|vulnerabilit(?:y|ies)|secrets?)\b/i.test(text);
+    || /\b(?:reports?|reported|finds?|found)\s+no\b[^.\n]{0,80}\b(?:findings?|issues?|vulnerabilit(?:y|ies)|secrets?)\b/i.test(text)
+    || /\b0\s+(?:errors?|findings?|issues?|diagnostics?|vulnerabilit(?:y|ies)|secrets?|warnings?)\b/i.test(text);
 }
 
 function isRequiredChecksSuccessStatement(text: string): boolean {
