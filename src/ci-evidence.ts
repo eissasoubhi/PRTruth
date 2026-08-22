@@ -51,6 +51,7 @@ function toolSpecificValidationMatchers(text: string): ScopeMatcher[] {
   if (/\bpytest\b/i.test(text)) tools.push(matcher("pytest", /\bpytest\b/i));
   if (/\bruff\b/i.test(text)) tools.push(matcher("ruff", /\bruff\b/i));
   if (/\bmypy\b/i.test(text)) tools.push(matcher("mypy", /\bmypy\b/i));
+  if (/\bpyright\b/i.test(text)) tools.push(matcher("pyright", /\bpyright\b/i));
   if (/\bflake8\b/i.test(text)) tools.push(matcher("flake8", /\bflake8\b/i));
   if (/\bshellcheck\b/i.test(text)) tools.push(matcher("shellcheck", /\bshellcheck\b/i));
   if (/\bshfmt\b/i.test(text)) tools.push(matcher("shfmt", /\bshfmt\b/i));
