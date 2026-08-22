@@ -31,7 +31,8 @@ function hasSuccessLanguage(text: string): boolean {
 function hasToolSuccessLanguage(text: string): boolean {
   return hasSuccessLanguage(text)
     || /\bclean\b/i.test(text)
-    || /\b(?:reports?|reported|finds?|found)\s+no\b[^.\n]{0,80}\b(?:findings?|issues?|vulnerabilit(?:y|ies)|secrets?)\b/i.test(text);
+    || /\b(?:reports?|reported|finds?|found)\s+no\b[^.\n]{0,80}\b(?:findings?|issues?|vulnerabilit(?:y|ies)|secrets?)\b/i.test(text)
+    || /\b0\s+(?:errors?|findings?|issues?|diagnostics?|vulnerabilit(?:y|ies)|secrets?|warnings?)\b/i.test(text);
 }
 
 function isRequiredChecksSuccessStatement(text: string): boolean {
@@ -52,6 +53,7 @@ function toolSpecificValidationMatchers(text: string): ScopeMatcher[] {
   if (/\bruff\b/i.test(text)) tools.push(matcher("ruff", /\bruff\b/i));
   if (/\bmypy\b/i.test(text)) tools.push(matcher("mypy", /\bmypy\b/i));
   if (/\bpyright\b/i.test(text)) tools.push(matcher("pyright", /\bpyright\b/i));
+  if (/\bpyrefly\b/i.test(text)) tools.push(matcher("pyrefly", /\bpyrefly\b/i));
   if (/\bty\s+check\b/i.test(text)) tools.push(matcher("ty", /\bty\b/i));
   if (/\bflake8\b/i.test(text)) tools.push(matcher("flake8", /\bflake8\b/i));
   if (/\bshellcheck\b/i.test(text)) tools.push(matcher("shellcheck", /\bshellcheck\b/i));
@@ -317,7 +319,6 @@ function genericCiScopeRequirements(text: string): GenericCiScopeRequirements | 
   if (/\bwebkit\b/i.test(text)) browsers.push(matcher("webkit", /\bwebkit\b/i));
   if (/\bsafari\b/i.test(text)) browsers.push(matcher("safari", /\bsafari\b/i));
   if (browsers.length > 0) axes.push(browsers);
-
   const summernoteHosts: ScopeMatcher[] = [];
   if (/\bbootstrap\s*3\b|\bbs3\b/i.test(text)) summernoteHosts.push(matcher("bootstrap 3", /\bbootstrap\s*3\b|\bbs3\b/i));
   if (/\bbootstrap\s*4\b|\bbs4\b/i.test(text)) summernoteHosts.push(matcher("bootstrap 4", /\bbootstrap\s*4\b|\bbs4\b/i));
