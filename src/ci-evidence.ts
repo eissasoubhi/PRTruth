@@ -99,6 +99,10 @@ function toolSpecificValidationMatchers(text: string): ScopeMatcher[] {
   if (/\bmdformat\b/i.test(text)) tools.push(matcher("mdformat", /\bmdformat\b/i));
   if (/\byamllint\b/i.test(text)) tools.push(matcher("yamllint", /\byamllint\b/i));
   if (/\btrunk\s+(?:check|fmt)\b/i.test(text)) tools.push(matcher("trunk", /\btrunk\b/i));
+  if (/\bterraform\s+fmt\b/i.test(text)) tools.push(matcher("terraform fmt", /\bterraform\s+fmt\b/i));
+  if (/\bterraform\s+validate\b/i.test(text)) tools.push(matcher("terraform validate", /\bterraform\s+validate\b/i));
+  if (/\btflint\b/i.test(text)) tools.push(matcher("tflint", /\btflint\b/i));
+  if (/\bcheckov\b/i.test(text)) tools.push(matcher("checkov", /\bcheckov\b/i));
   return tools;
 }
 
