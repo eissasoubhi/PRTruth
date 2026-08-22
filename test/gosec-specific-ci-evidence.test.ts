@@ -49,6 +49,6 @@ describe("Gosec CI evidence", () => {
     );
 
     expect(assessment).toMatchObject({ status: "FAILED" });
-    expect(assessment?.reason).toContain("gosec");
+    expect(assessment?.reason).toMatch(/gosec/i);
   });
 });
