@@ -57,6 +57,10 @@ function toolSpecificValidationMatchers(text: string): ScopeMatcher[] {
   if (/\bhadolint\b/i.test(text)) tools.push(matcher("hadolint", /\bhadolint\b/i));
   if (/\bactionlint\b/i.test(text)) tools.push(matcher("actionlint", /\bactionlint\b/i));
   if (/\bgolangci[- ]lint\b/i.test(text)) tools.push(matcher("golangci-lint", /\bgolangci[- ]lint\b/i));
+  if (/\bstaticcheck\b/i.test(text)) tools.push(matcher("staticcheck", /\bstaticcheck\b/i));
+  if (/\bgocritic\b|\bgo-critic\b/i.test(text)) tools.push(matcher("gocritic", /\bgocritic\b|\bgo-critic\b/i));
+  if (/\berrcheck\b/i.test(text)) tools.push(matcher("errcheck", /\berrcheck\b/i));
+  if (/\bdeadcode\b|\bdead code\b/i.test(text)) tools.push(matcher("deadcode", /\bdeadcode\b|\bdead code\b/i));
   if (/\bclippy\b/i.test(text)) tools.push(matcher("clippy", /\b(?:cargo\s+)?clippy\b/i));
   if (/\brustfmt\b|\bcargo\s+fmt\b/i.test(text)) tools.push(matcher("rustfmt", /\brustfmt\b|\bcargo\s+fmt\b/i));
   if (/\bcargo[- ]deny\b/i.test(text)) tools.push(matcher("cargo-deny", /\bcargo[- ]deny\b/i));
