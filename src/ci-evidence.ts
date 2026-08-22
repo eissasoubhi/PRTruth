@@ -99,6 +99,7 @@ function toolSpecificValidationMatchers(text: string): ScopeMatcher[] {
   if (/\bmdformat\b/i.test(text)) tools.push(matcher("mdformat", /\bmdformat\b/i));
   if (/\byamllint\b/i.test(text)) tools.push(matcher("yamllint", /\byamllint\b/i));
   if (/\bsqlfluff\b/i.test(text)) tools.push(matcher("sqlfluff", /\bsqlfluff\b/i));
+  if (/\bansible[- ]lint\b/i.test(text)) tools.push(matcher("ansible-lint", /\bansible[- ]lint\b/i));
   if (/\btrunk\s+(?:check|fmt)\b/i.test(text)) tools.push(matcher("trunk", /\btrunk\b/i));
   if (/\bterraform\s+fmt\b/i.test(text)) tools.push(matcher("terraform fmt", /\bterraform\s+fmt\b/i));
   if (/\bterraform\s+validate\b/i.test(text)) tools.push(matcher("terraform validate", /\bterraform\s+validate\b/i));
