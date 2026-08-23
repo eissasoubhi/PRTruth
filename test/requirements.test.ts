@@ -35,6 +35,23 @@ Something else.
     ]);
   });
 
+  it("recognizes bold acceptance labels used by issue templates", () => {
+    const result = extractRequirements(`
+**Acceptance criteria:**
+- [ ] Export endpoint exists
+- [x] Tests cover authorization
+
+**Contributor Checklist**
+- [ ] Read CONTRIBUTING.md
+`);
+
+    expect(result.map((item) => item.text)).toEqual([
+      "Export endpoint exists",
+      "Tests cover authorization"
+    ]);
+    expect(result[1]?.checked).toBe(true);
+  });
+
   it("does not mix contributor checklists into explicit acceptance criteria", () => {
     const result = extractRequirements(`
 ## Scope
@@ -61,17 +78,20 @@ Something else.
     ]);
   });
 
-  it("prefers expected behavior prose over reproduction steps", () => {
+  it("prefers bold expected behavior prose over bold reproduction steps", () => {
     const result = extractRequirements(`
-## To Reproduce
+**To Reproduce**
+
 1. Create a restricted role.
 2. Start a whole-library export.
 3. Observe that the operation is accepted.
 
-## Expected behavior
+**Expected behavior**
+
 Whole-library transfers require unrestricted access for every content verb implied by the operation. Configuration-backup discovery requires the dedicated backup permission.
 
-## Additional context
+**Additional context**
+
 The fix should exercise read, write, and delete restrictions independently.
 `);
 
@@ -99,12 +119,12 @@ The fix should exercise read, write, and delete restrictions independently.
 
   it("does not treat pure reproduction steps as requirements", () => {
     const result = extractRequirements(`
-## To Reproduce
+**To Reproduce**
 1. Open the dashboard.
 2. Click the export button.
 3. Observe the crash.
 
-## Screenshots
+**Screenshots**
 - See attached screenshot
 `);
 
