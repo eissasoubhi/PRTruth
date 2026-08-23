@@ -11,7 +11,7 @@ The issue has four explicit acceptance criteria for the 320px TopBar defect. Ind
 - the exact PR head `6d337681c88346d44bba1175a311c2d14a4d37b7` has successful CI plus successful docs/design/copy gates;
 - the PR was merged and the issue was closed as completed.
 
-This is intentionally a difficult oracle for PRTruth. Browser-measured business/UI behavior should not become `PROVEN` merely because generic CI is green. A disagreement can therefore be a safe evidence-model ceiling rather than a verifier defect unless PRTruth has structured evidence that actually scopes to the browser assertions.
+Current PRTruth keeps all four issue requirements `UNPROVEN`. That disagreement is an intentional evidence-model ceiling for now: browser-measured business/UI behavior should not become `PROVEN` merely because generic CI is green. Stronger structured browser/assertion evidence is needed before narrowing that gap.
 
 ## `azholdaspaev/netty-loom-spring` issue #31 / PR #176
 
@@ -24,7 +24,11 @@ Independent oracle:
 - generic green build/actionlint evidence must not prove Maven Central publication or secret-availability behavior;
 - file-level existence/configuration requirements can have navigation evidence, but stronger behavioral claims still need deterministic runtime evidence.
 
-This case guards against a dangerous false-`PROVEN` pattern: a detailed PR description and green CI must not overwrite the issue's original contract.
+The issue requirements correctly remain `UNPROVEN`, but the first executable rerun exposed a separate critical claim-level false positive. The PR claim that a probe publish writes **165 files** into `build/staging` was incorrectly marked `PROVEN` solely from generic successful build jobs. The exact number was not present in the observed CI evidence.
+
+The fix adds a conservative quantified artifact-count guard. Claims or requirements that would otherwise be `PROVEN` but assert explicit counts of files, artifacts, archive entries, or packages are downgraded to `UNPROVEN` unless stronger value-bearing evidence is available. `FAILED` precedence is unchanged, and ordinary non-quantified build claims remain provable from matching successful build evidence.
+
+On the fixed exact head, the real 165-file claim is now `UNPROVEN` with the quantitative-evidence explanation, while the separate ordinary `./gradlew build --rerun-tasks green` claim remains `PROVEN`. All five manual-oracle batches, core CI, and the GitHub-rules smoke are green on that head.
 
 ## Safety rule
 
