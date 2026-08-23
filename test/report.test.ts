@@ -38,6 +38,7 @@ const report: VerificationReport = {
   ],
   changedFiles: ["src/widget.ts"],
   checks: [],
+  instructions: [],
   results: [
     {
       requirement: {
@@ -94,5 +95,18 @@ describe("evidence reports", () => {
     expect(terminal).toContain("claim-1: Matching CI checks completed successfully.");
     expect(terminal).toContain("Evidence: test: success (https://example.test/check/1)");
     expect(terminal).toContain("claim-2: No deterministic compatibility evidence was observed.");
+  });
+
+  it("keeps terminal output plain by default", () => {
+    const terminal = renderTerminal(report);
+    expect(terminal).not.toContain("\u001b[");
+  });
+
+  it("adds ANSI styling when terminal colors are enabled", () => {
+    const terminal = renderTerminal(report, { color: true });
+    expect(terminal).toContain("\u001b[36m");
+    expect(terminal).toContain("\u001b[32m");
+    expect(terminal).toContain("\u001b[33m");
+    expect(terminal).toContain("\u001b[0m");
   });
 });
