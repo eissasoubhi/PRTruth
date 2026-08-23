@@ -105,6 +105,7 @@ function toolSpecificValidationMatchers(text: string): ScopeMatcher[] {
   if (/\bsqlfluff\b/i.test(text)) tools.push(matcher("sqlfluff", /\bsqlfluff\b/i));
   if (/\bansible[- ]lint\b/i.test(text)) tools.push(matcher("ansible-lint", /\bansible[- ]lint\b/i));
   if (/\bspectral\b/i.test(text)) tools.push(matcher("spectral", /\bspectral\b/i));
+  if (/\bcheck[- ]jsonschema\b/i.test(text)) tools.push(matcher("check-jsonschema", /\b(?:check[- ]jsonschema|jsonschema)\b/i));
   if (/\bvale\b/i.test(text)) tools.push(matcher("vale", /^(?!.*\bprepare\b).*\bvale\b/i));
   if (/\btrunk\s+(?:check|fmt)\b/i.test(text)) tools.push(matcher("trunk", /\btrunk\b/i));
   if (/\bterraform\s+fmt\b/i.test(text)) tools.push(matcher("terraform fmt", /\bterraform\s+fmt\b/i));
@@ -356,7 +357,6 @@ function missingScopeCombinations(
     (current, axis) => current.flatMap((combination) => axis.map((scope) => [...combination, scope])),
     [[]]
   );
-
   return combinations
     .filter((combination) => !environmentMatches.some((check) => combination.every((scope) => scope.matches(check.name))))
     .map((combination) => [
