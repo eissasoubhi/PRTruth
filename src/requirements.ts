@@ -6,6 +6,7 @@ const CHECKBOX = /^\s*[-*+]\s+\[([ xX])\]\s+(.+)$/;
 const LIST_ITEM = /^\s*(?:[-*+]|\d+[.)])\s+(.+)$/;
 const ACCEPTANCE_SECTION = /^(?:acceptance criteria|requirements?|definition of done|success criteria|criteria)$/i;
 const EXPECTED_SECTION = /^(?:expected behavior|desired behavior|expected result|desired result)$/i;
+const CHANGE_SECTION = /^(?:recommended change|proposed change)(?:\s*\([^)]*\))?$/i;
 const EXCLUDED_SECTION = /^(?:contributor checklist|checklist|out of scope|to reproduce|steps? to reproduce|reproduction(?: steps?)?|how (?:has this been )?tested|testing instructions?|references?|technical notes?|screenshots?|additional notes?)$/i;
 
 type MarkdownHeading = {
@@ -83,7 +84,11 @@ function listRequirement(
   };
 }
 
-function extractAcceptanceSections(lines: string[]): Requirement[] {
+function extractListSections(
+  lines: string[],
+  sectionPattern: RegExp,
+  source: Requirement["source"]
+): Requirement[] {
   let section: MarkdownHeading | null = null;
   const requirements: Requirement[] = [];
 
@@ -91,7 +96,7 @@ function extractAcceptanceSections(lines: string[]): Requirement[] {
     const heading = parseHeading(line);
     if (heading) {
       if (section && closesSection(section, heading)) section = null;
-      if (ACCEPTANCE_SECTION.test(heading.text)) section = heading;
+      if (sectionPattern.test(heading.text)) section = heading;
       continue;
     }
 
@@ -99,15 +104,19 @@ function extractAcceptanceSections(lines: string[]): Requirement[] {
     const item = line.match(LIST_ITEM);
     if (!item) continue;
 
-    const requirement = listRequirement(
-      item[1] ?? "",
-      "acceptance-section",
-      requirements.length + 1
-    );
+    const requirement = listRequirement(item[1] ?? "", source, requirements.length + 1);
     if (requirement) requirements.push(requirement);
   }
 
   return requirements;
+}
+
+function extractAcceptanceSections(lines: string[]): Requirement[] {
+  return extractListSections(lines, ACCEPTANCE_SECTION, "acceptance-section");
+}
+
+function extractChangeSections(lines: string[]): Requirement[] {
+  return extractListSections(lines, CHANGE_SECTION, "issue-list");
 }
 
 function extractNonBoilerplateChecklist(lines: string[]): Requirement[] {
@@ -234,15 +243,22 @@ export function extractRequirements(markdown: string): Requirement[] {
   const acceptance = extractAcceptanceSections(lines);
   if (acceptance.length > 0) return withIds(acceptance);
 
+  // Bug reports frequently express the desired state as prose under an
+  // Expected behavior heading. Prefer that over reproduction or process lists.
+  const expected = extractExpectedBehavior(lines);
+  if (expected.length > 0) return withIds(expected);
+
+  // Some issue formats use a bounded "Recommended change" / "Proposed change"
+  // section instead of formal acceptance criteria. Treat only that explicit
+  // section as intent rather than mixing in backward-compatibility or manual
+  // verification instructions elsewhere in the issue.
+  const change = extractChangeSections(lines);
+  if (change.length > 0) return withIds(change);
+
   // Simple issues often consist of task boxes without a dedicated acceptance
   // heading. Keep those, but exclude contributor/reproduction boilerplate.
   const checklist = extractNonBoilerplateChecklist(lines);
   if (checklist.length > 0) return withIds(checklist);
-
-  // Bug reports frequently express the desired state as prose under an
-  // Expected behavior heading. Prefer that over numbered reproduction steps.
-  const expected = extractExpectedBehavior(lines);
-  if (expected.length > 0) return withIds(expected);
 
   // Last-resort compatibility for simple list-based issues. Known procedural
   // sections remain excluded so reproduction instructions are never treated as

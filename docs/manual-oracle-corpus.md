@@ -92,6 +92,49 @@ The first batch already found three distinct classes of improvement:
 2. **Structured runner scope** — GitHub workflow job labels are deterministic metadata and can safely prove Linux/ARM64 scope for step evidence. This is a safe evidence-ingestion fix with a real-world regression oracle.
 3. **Evidence/model gaps that must remain conservative for now** — arbitrary framework authorization semantics, dependency behavior, exact business-flow test coverage, and justified waivers need dedicated evidence or status models. They must not be papered over with keyword matching.
 
+## Batch 2 — 2026-08-23
+
+### `Shevanio/shevanio-ai` issue #11 / PR #12 — Go
+
+The issue defines four explicit acceptance criteria spanning documentation, a PowerShell installer invariant, focused tests and a review-size policy. PRTruth selects the correct four criteria but reports all four `UNPROVEN`.
+
+The independent review found strong concrete evidence for all four:
+
+| Requirement | Independent assessment | PRTruth | Classification |
+| --- | --- | --- | --- |
+| No prerelease publication claims remain in the secondary installation guides | `PROVEN`: the PR diff removes the old “not published / future formula” guidance and replaces it with the stable v2.5.0 Homebrew, Go and upgrade paths | `UNPROVEN` | missing deterministic documentation/diff adapter |
+| PowerShell installer uses the `Shevanio` owner without changing stable `@latest` policy | `PROVEN`: the installer patch changes only the owner constant from `Gentleman-Programming` to `Shevanio`; a focused Go regression test asserts the canonical module and stable `@latest` command | `UNPROVEN` | missing deterministic source-invariant adapter |
+| Focused installer and documented-invocation tests pass | `PROVEN`: focused regression tests are added, and exact-head CI has a successful `Unit Tests` job plus successful platform/runtime jobs | `UNPROVEN` | missing deterministic association between the requirement and the relevant test suite |
+| Authored change remains within the 400-line review budget | `PROVEN`: exact-head PR Validation contains the structured successful step `Check PR Cognitive Load / Verify PR stays within review budget` | `UNPROVEN` | evidence-adapter gap: GitHub has a direct policy check, but PRTruth does not yet safely map arbitrary policy-step names to prose requirements |
+
+Human issue-level assessment: **PROVEN (4/4)**.
+
+This case is deliberately **not** fixed with fuzzy name matching. The review-budget check is promising structured evidence, but a generic step-name entailment rule needs a principled design and adversarial tests before it can become proof.
+
+### `nilesh32236/performance-optimisation` issue #601 / PR #645 — PHP / WordPress
+
+The issue does not have an `Acceptance criteria` section. Its actual requested scope is an explicit `Recommended change (one scope)` section with three numbered items. It then separately lists backward-compatibility notes and verification instructions.
+
+Baseline PRTruth incorrectly extracted **8 requirements**: the three requested changes plus three backward-compatibility bullets and two verification bullets. The batch exposed this as a second cross-project issue-intent boundary defect.
+
+The extractor now recognizes bounded `Recommended change` / `Proposed change` sections when stronger `Acceptance criteria` or `Expected behavior` sections are absent. The real corpus rerun selects exactly the intended three requirements. Regression tests also ensure formal acceptance criteria remain authoritative if both forms exist.
+
+| Requirement / area | Independent assessment | PRTruth after extraction fix | Classification |
+| --- | --- | --- | --- |
+| Requirement set | exactly the three numbered items under `Recommended change (one scope)` | exactly 3 | **requirement-extraction defect fixed** |
+| Apply per-size quality during batch conversion | the PR states this was already shipped before #645; this PR does not modify that implementation | `UNPROVEN` | conservative ceiling is appropriate for this PR history; prior work is not automatically proof for the current PR |
+| Skip gain-map HDR sources | `PROVEN` factually by the patch: it adds bounded UltraHDR marker detection, skips re-encoding and records `skipped`; a focused regression test is added; exact-head PHP CI and security/style scans are green | `UNPROVEN` | missing deterministic PHP/domain + test-semantic adapter; do not infer the behavior from keywords alone |
+| Honor `image_editor_output_format` consistently | the PR states this was already shipped before #645 and does not modify that implementation | `UNPROVEN` | conservative ceiling is appropriate for this PR history |
+
+A separate AI-review workflow on the exact head failed while the repository's actual `CI — JS & PHP` and `WPCS & Psalm Security Scan` workflows succeeded. The oracle therefore also guards against treating every unrelated check failure as proof that one of these three product requirements failed.
+
+## Batch 2 findings
+
+1. **Recommended/proposed change sections are legitimate issue intent in some projects.** They should be bounded like acceptance sections, not mixed with later compatibility/testing lists. This is a safe parser improvement backed by a real PHP issue and regression tests.
+2. **Structured policy checks are an important future evidence source.** The Shevanio review-budget criterion has a direct successful GitHub step, but generic prose-to-step mapping is not yet safe enough to promote to `PROVEN` automatically.
+3. **Historical/prior implementation must not be smuggled into current-PR proof.** The PHP issue explicitly says two of three points were already shipped. PRTruth staying `UNPROVEN` for those points is preferable to treating the PR author's statement as proof.
+4. **A green relevant CI and a failed unrelated workflow can coexist.** Requirement verdicts must stay tied to relevant evidence rather than collapse all repository automation into one boolean.
+
 ## Expansion rules
 
 Future batches should deliberately add:
