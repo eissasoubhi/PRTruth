@@ -64,7 +64,7 @@ jobs:
             "required-structure bar",
             'self-containment exemption',
             'docs/skill-writing-best-practices.md',
-            'CODING_STANDARDS.md is trimmed',
+            'is trimmed per the migration list above',
             'run twice against this repo',
             'ADR is recorded'
           ];
