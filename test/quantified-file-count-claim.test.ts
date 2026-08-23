@@ -1,28 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { assessCompletionClaim } from "../src/claim-evidence.js";
-import type { CheckRunSummary } from "../src/types.js";
+import { requiresQuantifiedArtifactCountEvidence } from "../src/quantitative-guard.js";
 
-function success(name: string): CheckRunSummary {
-  return { name, status: "completed", conclusion: "success" };
-}
-
-describe("quantified file-count completion claims", () => {
-  it("does not prove an artifact count from an unrelated successful build", () => {
-    const assessment = assessCompletionClaim(
-      "Probe publish at a non-SNAPSHOT version writes 165 files into build/staging: 150 artifacts plus 15 metadata files",
-      [success("build (ubuntu-latest)"), success("build (macos-latest)")]
-    );
-
-    expect(assessment.status).toBe("UNPROVEN");
-    expect(assessment.reason).toContain("stated value");
+describe("quantified artifact-count completion claims", () => {
+  it("requires value evidence for the real publish-probe shape", () => {
+    expect(
+      requiresQuantifiedArtifactCountEvidence(
+        "Probe publish at a non-SNAPSHOT version writes 165 files into build/staging: 150 artifacts plus 15 metadata files"
+      )
+    ).toBe(true);
   });
 
-  it("still proves an ordinary build-success claim from matching green build evidence", () => {
-    const assessment = assessCompletionClaim(
-      "The build passes",
-      [success("build (ubuntu-latest)")]
-    );
+  it("covers artifact and archive entry counts", () => {
+    expect(requiresQuantifiedArtifactCountEvidence("150 artifacts were produced")).toBe(true);
+    expect(requiresQuantifiedArtifactCountEvidence("The archive contains 150 entries")).toBe(true);
+  });
 
-    expect(assessment.status).toBe("PROVEN");
+  it("does not treat an ordinary build-success claim as quantified", () => {
+    expect(requiresQuantifiedArtifactCountEvidence("The build passes")).toBe(false);
   });
 });
