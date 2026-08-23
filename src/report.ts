@@ -1,10 +1,24 @@
-import type { Evidence, VerificationReport } from "./types.js";
+import type { Evidence, EvidenceStatus, VerificationReport } from "./types.js";
 
 const SYMBOL = {
   PROVEN: "✓",
   FAILED: "✗",
   UNPROVEN: "⚠"
 } as const;
+
+const ANSI = {
+  reset: "\u001b[0m",
+  bold: "\u001b[1m",
+  dim: "\u001b[2m",
+  cyan: "\u001b[36m",
+  green: "\u001b[32m",
+  red: "\u001b[31m",
+  yellow: "\u001b[33m"
+} as const;
+
+export interface TerminalRenderOptions {
+  color?: boolean;
+}
 
 function evidenceLabel(evidence: Evidence): string {
   return evidence.url ? `${evidence.summary} (${evidence.url})` : evidence.summary;
@@ -15,7 +29,7 @@ function markdownEvidence(evidence: Evidence): string {
   return evidence.url ? `[${summary}](${evidence.url})` : summary;
 }
 
-function claimFactCheck(status: "PROVEN" | "FAILED" | "UNPROVEN"): string {
+function claimFactCheck(status: EvidenceStatus): string {
   if (status === "UNPROVEN") {
     return `${SYMBOL[status]} **${status}** — unsupported`;
   }
@@ -29,47 +43,95 @@ function terminalLabel(text: string): string {
   return text.length > 52 ? `${text.slice(0, 49)}...` : text;
 }
 
-export function renderTerminal(report: VerificationReport): string {
+function styled(text: string, enabled: boolean, ...codes: string[]): string {
+  return enabled ? `${codes.join("")}${text}${ANSI.reset}` : text;
+}
+
+function statusColor(status: EvidenceStatus): string {
+  if (status === "PROVEN") {
+    return ANSI.green;
+  }
+  if (status === "FAILED") {
+    return ANSI.red;
+  }
+  return ANSI.yellow;
+}
+
+function verdictColor(verdict: VerificationReport["verdict"]): string {
+  if (verdict === "PROVEN") {
+    return ANSI.green;
+  }
+  if (verdict === "FAILED") {
+    return ANSI.red;
+  }
+  return ANSI.yellow;
+}
+
+function terminalStatus(status: EvidenceStatus, color: boolean): string {
+  return styled(`${SYMBOL[status]} ${status}`, color, ANSI.bold, statusColor(status));
+}
+
+function terminalSymbol(status: EvidenceStatus, color: boolean): string {
+  return styled(SYMBOL[status], color, statusColor(status));
+}
+
+function heading(text: string, color: boolean): string {
+  return styled(text, color, ANSI.bold, ANSI.cyan);
+}
+
+function rule(color: boolean): string {
+  return styled("────────────────────────────────────────────────────────────────────", color, ANSI.dim);
+}
+
+export function renderTerminal(
+  report: VerificationReport,
+  options: TerminalRenderOptions = {}
+): string {
+  const color = options.color ?? false;
   const rows = report.results.map((result) => {
     const label = terminalLabel(result.requirement.text);
-    return `${label.padEnd(55)} ${SYMBOL[result.status]} ${result.status}`;
+    return `${label.padEnd(55)} ${terminalStatus(result.status, color)}`;
   });
 
   const evidence = report.results.flatMap((result) =>
-    result.evidence.map((item) => `  ${SYMBOL[result.status]} ${result.requirement.id}: ${evidenceLabel(item)}`)
+    result.evidence.map(
+      (item) => `  ${terminalSymbol(result.status, color)} ${result.requirement.id}: ${evidenceLabel(item)}`
+    )
   );
   const claimRows = report.claimResults?.map((result) => {
     const label = terminalLabel(result.claim.text);
-    return `${label.padEnd(55)} ${SYMBOL[result.status]} ${result.status}`;
+    return `${label.padEnd(55)} ${terminalStatus(result.status, color)}`;
   }) ?? [];
   const claimDetails = report.claimResults?.flatMap((result) => [
-    `  ${SYMBOL[result.status]} ${result.claim.id}: ${result.reason}`,
+    `  ${terminalSymbol(result.status, color)} ${result.claim.id}: ${result.reason}`,
     ...result.evidence.map((item) => `    Evidence: ${evidenceLabel(item)}`)
   ]) ?? [];
   const proven = report.results.filter((result) => result.status === "PROVEN").length;
 
   return [
-    `PRTruth — ${report.repository}#${report.prNumber}`,
+    heading(`PRTruth — ${report.repository}#${report.prNumber}`, color),
     `Issue #${report.issueNumber}: ${report.issueTitle}`,
     "",
-    "Requirement                                             Result",
-    "────────────────────────────────────────────────────────────────────",
-    ...(rows.length > 0 ? rows : ["No acceptance criteria detected.                       ⚠ UNPROVEN"]),
-    ...(evidence.length > 0 ? ["", "Evidence", "────────────────────────────────────────────────────────────────────", ...evidence] : []),
+    heading("Requirement                                             Result", color),
+    rule(color),
+    ...(rows.length > 0
+      ? rows
+      : [`No acceptance criteria detected.                       ${terminalStatus("UNPROVEN", color)}`]),
+    ...(evidence.length > 0 ? ["", heading("Evidence", color), rule(color), ...evidence] : []),
     ...(claimRows.length > 0
       ? [
           "",
-          "Completion claims",
-          "────────────────────────────────────────────────────────────────────",
+          heading("Completion claims", color),
+          rule(color),
           ...claimRows,
           "",
-          "Claim explanations",
-          "────────────────────────────────────────────────────────────────────",
+          heading("Claim explanations", color),
+          rule(color),
           ...claimDetails
         ]
       : []),
     "",
-    `Verdict: ${report.verdict}`,
+    `${styled("Verdict:", color, ANSI.bold)} ${styled(report.verdict, color, ANSI.bold, verdictColor(report.verdict))}`,
     `${proven} / ${report.results.length} requirements proven`
   ].join("\n");
 }
