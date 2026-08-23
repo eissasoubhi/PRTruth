@@ -173,6 +173,23 @@ The generated schema should include the annotated extra value type.
     expect(result).toEqual([]);
   });
 
+  it("excludes issue-template prerequisite checklists", () => {
+    const result = extractRequirements(`
+### Prerequisites
+- [x] I read the project policy.
+- [x] I verified that this issue is not a duplicate.
+- [x] I disabled unrelated extensions and reproduced the problem.
+
+### URL address of the web page
+https://example.test/
+
+### Description
+A cookie notice is partially blocked.
+`);
+
+    expect(result).toEqual([]);
+  });
+
   it("ignores list-like lines inside fenced code blocks", () => {
     const result = extractRequirements(`
 Problem description.
