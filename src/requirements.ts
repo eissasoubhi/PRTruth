@@ -7,7 +7,7 @@ const LIST_ITEM = /^\s*(?:[-*+]|\d+[.)])\s+(.+)$/;
 const ACCEPTANCE_SECTION = /^(?:acceptance criteria|requirements?|definition of done|success criteria|criteria)$/i;
 const EXPECTED_SECTION = /^(?:expected behavior|desired behavior|expected result|desired result)$/i;
 const CHANGE_SECTION = /^(?:recommended change|proposed change)(?:\s*\([^)]*\))?$/i;
-const EXCLUDED_SECTION = /^(?:contributor checklist|checklist|out of scope|to reproduce|steps? to reproduce|reproduction(?: steps?)?|how (?:has this been )?tested|testing instructions?|references?|technical notes?|screenshots?|additional notes?)$/i;
+const EXCLUDED_SECTION = /^(?:contributor checklist|checklist|initial checks?|affected components?|out of scope|to reproduce|steps? to reproduce|reproduction(?: steps?)?|how (?:has this been )?tested|testing instructions?|references?|technical notes?|screenshots?|additional notes?)$/i;
 
 type MarkdownHeading = {
   kind: "atx" | "bold";
@@ -21,6 +21,27 @@ function normalizeText(value: string): string {
 
 function normalizeHeading(value: string): string {
   return normalizeText(value).replace(/[:：]\s*$/, "");
+}
+
+function stripFencedCode(lines: string[]): string[] {
+  let fence: "```" | "~~~" | null = null;
+  return lines.map((line) => {
+    const trimmed = line.trimStart();
+    if (!fence) {
+      if (trimmed.startsWith("```")) {
+        fence = "```";
+        return "";
+      }
+      if (trimmed.startsWith("~~~")) {
+        fence = "~~~";
+        return "";
+      }
+      return line;
+    }
+
+    if (trimmed.startsWith(fence)) fence = null;
+    return "";
+  });
 }
 
 function parseHeading(line: string): MarkdownHeading | null {
@@ -198,7 +219,7 @@ function extractExpectedBehavior(lines: string[]): Requirement[] {
       continue;
     }
 
-    if (/^```|^~~~|^>|^<!--/.test(trimmed)) continue;
+    if (/^>|^<!--/.test(trimmed)) continue;
     paragraph.push(trimmed);
   }
 
@@ -236,32 +257,19 @@ function extractFallbackLists(lines: string[]): Requirement[] {
 }
 
 export function extractRequirements(markdown: string): Requirement[] {
-  const lines = markdown.split(/\r?\n/);
+  const lines = stripFencedCode(markdown.split(/\r?\n/));
 
-  // An explicit acceptance/requirements section is the strongest statement of
-  // issue intent. Do not mix unrelated issue-template checklists into it.
   const acceptance = extractAcceptanceSections(lines);
   if (acceptance.length > 0) return withIds(acceptance);
 
-  // Bug reports frequently express the desired state as prose under an
-  // Expected behavior heading. Prefer that over reproduction or process lists.
   const expected = extractExpectedBehavior(lines);
   if (expected.length > 0) return withIds(expected);
 
-  // Some issue formats use a bounded "Recommended change" / "Proposed change"
-  // section instead of formal acceptance criteria. Treat only that explicit
-  // section as intent rather than mixing in backward-compatibility or manual
-  // verification instructions elsewhere in the issue.
   const change = extractChangeSections(lines);
   if (change.length > 0) return withIds(change);
 
-  // Simple issues often consist of task boxes without a dedicated acceptance
-  // heading. Keep those, but exclude contributor/reproduction boilerplate.
   const checklist = extractNonBoilerplateChecklist(lines);
   if (checklist.length > 0) return withIds(checklist);
 
-  // Last-resort compatibility for simple list-based issues. Known procedural
-  // sections remain excluded so reproduction instructions are never treated as
-  // completion requirements merely because they are numbered.
   return withIds(extractFallbackLists(lines));
 }

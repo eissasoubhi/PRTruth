@@ -155,6 +155,39 @@ The existing batch path needs to match core behavior.
     expect(result[1]?.checked).toBe(true);
   });
 
+  it("excludes issue-template initial-check and affected-component metadata", () => {
+    const result = extractRequirements(`
+### Initial Checks
+- [x] I searched for similar requests
+- [x] I read the documentation
+
+### Description
+The generated schema should include the annotated extra value type.
+
+### Affected Components
+- [ ] Data serialization
+- [x] JSON Schema
+- [ ] Dataclasses
+`);
+
+    expect(result).toEqual([]);
+  });
+
+  it("ignores list-like lines inside fenced code blocks", () => {
+    const result = extractRequirements(`
+Problem description.
+
+\`\`\`diff
+-    return os.path.samestat(p1.lstat(), p2.lstat())
++    s1, s2 = p1.lstat(), p2.lstat()
++    if not s1.st_ino or not s2.st_ino:
++        return False
+\`\`\`
+`);
+
+    expect(result).toEqual([]);
+  });
+
   it("does not treat pure reproduction steps as requirements", () => {
     const result = extractRequirements(`
 **To Reproduce**
