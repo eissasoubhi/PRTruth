@@ -100,6 +100,44 @@ The fix should exercise read, write, and delete restrictions independently.
     ]);
   });
 
+  it("uses an explicit recommended-change section instead of compatibility and verification lists", () => {
+    const result = extractRequirements(`
+## Context
+The existing batch path needs to match core behavior.
+
+## Recommended change (one scope)
+1. Apply per-size quality during batch conversion.
+2. Skip gain-map HDR sources.
+3. Honor image_editor_output_format consistently.
+
+## Backward compatibility
+- New helpers stay function_exists guarded.
+- No settings-schema changes.
+
+## Verification
+- composer test: cover the new behavior.
+- Manual: verify uploads on a release candidate host.
+`);
+
+    expect(result.map((item) => item.text)).toEqual([
+      "Apply per-size quality during batch conversion.",
+      "Skip gain-map HDR sources.",
+      "Honor image_editor_output_format consistently."
+    ]);
+  });
+
+  it("keeps acceptance criteria authoritative over a recommended-change section", () => {
+    const result = extractRequirements(`
+## Recommended change
+1. Implement one possible approach.
+
+## Acceptance criteria
+- [ ] Observable behavior is correct.
+`);
+
+    expect(result.map((item) => item.text)).toEqual(["Observable behavior is correct."]);
+  });
+
   it("keeps simple issue checklists when there is no acceptance heading", () => {
     const result = extractRequirements(`
 ## Tasks
