@@ -1,11 +1,18 @@
 import type { Requirement } from "./types.js";
 
-const ACCEPTANCE_HEADING = /^(#{1,6})\s+(acceptance criteria|requirements?|definition of done|success criteria|criteria)\s*#*\s*$/i;
-const EXPECTED_HEADING = /^(#{1,6})\s+(expected behavior|desired behavior|expected result|desired result)\s*#*\s*$/i;
-const HEADING = /^(#{1,6})\s+(.+?)\s*#*\s*$/;
+const ATX_HEADING = /^(#{1,6})\s+(.+?)\s*#*\s*$/;
+const BOLD_HEADING = /^\s*\*\*(.+?)\*\*\s*$/;
 const CHECKBOX = /^\s*[-*+]\s+\[([ xX])\]\s+(.+)$/;
 const LIST_ITEM = /^\s*(?:[-*+]|\d+[.)])\s+(.+)$/;
+const ACCEPTANCE_SECTION = /^(?:acceptance criteria|requirements?|definition of done|success criteria|criteria)$/i;
+const EXPECTED_SECTION = /^(?:expected behavior|desired behavior|expected result|desired result)$/i;
 const EXCLUDED_SECTION = /^(?:contributor checklist|checklist|out of scope|to reproduce|steps? to reproduce|reproduction(?: steps?)?|how (?:has this been )?tested|testing instructions?|references?|technical notes?|screenshots?|additional notes?)$/i;
+
+type MarkdownHeading = {
+  kind: "atx" | "bold";
+  level: number;
+  text: string;
+};
 
 function normalizeText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
@@ -13,6 +20,33 @@ function normalizeText(value: string): string {
 
 function normalizeHeading(value: string): string {
   return normalizeText(value).replace(/[:：]\s*$/, "");
+}
+
+function parseHeading(line: string): MarkdownHeading | null {
+  const atx = line.match(ATX_HEADING);
+  if (atx) {
+    return {
+      kind: "atx",
+      level: atx[1]?.length ?? 7,
+      text: normalizeHeading(atx[2] ?? "")
+    };
+  }
+
+  const bold = line.match(BOLD_HEADING);
+  if (bold) {
+    return {
+      kind: "bold",
+      level: 7,
+      text: normalizeHeading(bold[1] ?? "")
+    };
+  }
+
+  return null;
+}
+
+function closesSection(section: MarkdownHeading, next: MarkdownHeading): boolean {
+  if (section.kind === "bold") return true;
+  return next.kind === "atx" && next.level <= section.level;
 }
 
 function withIds(requirements: Requirement[]): Requirement[] {
@@ -50,24 +84,18 @@ function listRequirement(
 }
 
 function extractAcceptanceSections(lines: string[]): Requirement[] {
-  let inSection = false;
-  let sectionLevel = 7;
+  let section: MarkdownHeading | null = null;
   const requirements: Requirement[] = [];
 
   for (const line of lines) {
-    const acceptance = line.match(ACCEPTANCE_HEADING);
-    if (acceptance) {
-      inSection = true;
-      sectionLevel = acceptance[1]?.length ?? 7;
+    const heading = parseHeading(line);
+    if (heading) {
+      if (section && closesSection(section, heading)) section = null;
+      if (ACCEPTANCE_SECTION.test(heading.text)) section = heading;
       continue;
     }
 
-    const heading = line.match(HEADING);
-    if (inSection && heading && (heading[1]?.length ?? 7) <= sectionLevel) {
-      inSection = false;
-    }
-
-    if (!inSection) continue;
+    if (!section) continue;
     const item = line.match(LIST_ITEM);
     if (!item) continue;
 
@@ -83,25 +111,20 @@ function extractAcceptanceSections(lines: string[]): Requirement[] {
 }
 
 function extractNonBoilerplateChecklist(lines: string[]): Requirement[] {
-  let excluded = false;
-  let excludedLevel = 7;
+  let excludedSection: MarkdownHeading | null = null;
   const requirements: Requirement[] = [];
 
   for (const line of lines) {
-    const heading = line.match(HEADING);
+    const heading = parseHeading(line);
     if (heading) {
-      const level = heading[1]?.length ?? 7;
-      if (excluded && level <= excludedLevel) excluded = false;
-
-      const headingName = normalizeHeading(heading[2] ?? "");
-      if (EXCLUDED_SECTION.test(headingName)) {
-        excluded = true;
-        excludedLevel = level;
+      if (excludedSection && (closesSection(excludedSection, heading) || heading.kind === "bold")) {
+        excludedSection = null;
       }
+      if (EXCLUDED_SECTION.test(heading.text)) excludedSection = heading;
       continue;
     }
 
-    if (excluded) continue;
+    if (excludedSection) continue;
     const match = line.match(CHECKBOX);
     if (!match) continue;
 
@@ -117,8 +140,7 @@ function extractNonBoilerplateChecklist(lines: string[]): Requirement[] {
 }
 
 function extractExpectedBehavior(lines: string[]): Requirement[] {
-  let inSection = false;
-  let sectionLevel = 7;
+  let section: MarkdownHeading | null = null;
   let paragraph: string[] = [];
   const requirements: Requirement[] = [];
 
@@ -134,21 +156,20 @@ function extractExpectedBehavior(lines: string[]): Requirement[] {
   };
 
   for (const line of lines) {
-    const expected = line.match(EXPECTED_HEADING);
-    if (expected) {
-      flushParagraph();
-      inSection = true;
-      sectionLevel = expected[1]?.length ?? 7;
+    const heading = parseHeading(line);
+    if (heading) {
+      if (section && (closesSection(section, heading) || section.kind === "bold")) {
+        flushParagraph();
+        section = null;
+      }
+      if (EXPECTED_SECTION.test(heading.text)) {
+        flushParagraph();
+        section = heading;
+      }
       continue;
     }
 
-    const heading = line.match(HEADING);
-    if (inSection && heading && (heading[1]?.length ?? 7) <= sectionLevel) {
-      flushParagraph();
-      inSection = false;
-    }
-
-    if (!inSection) continue;
+    if (!section) continue;
 
     const item = line.match(LIST_ITEM);
     if (item) {
@@ -177,25 +198,20 @@ function extractExpectedBehavior(lines: string[]): Requirement[] {
 }
 
 function extractFallbackLists(lines: string[]): Requirement[] {
-  let excluded = false;
-  let excludedLevel = 7;
+  let excludedSection: MarkdownHeading | null = null;
   const requirements: Requirement[] = [];
 
   for (const line of lines) {
-    const heading = line.match(HEADING);
+    const heading = parseHeading(line);
     if (heading) {
-      const level = heading[1]?.length ?? 7;
-      if (excluded && level <= excludedLevel) excluded = false;
-
-      const headingName = normalizeHeading(heading[2] ?? "");
-      if (EXCLUDED_SECTION.test(headingName)) {
-        excluded = true;
-        excludedLevel = level;
+      if (excludedSection && (closesSection(excludedSection, heading) || heading.kind === "bold")) {
+        excludedSection = null;
       }
+      if (EXCLUDED_SECTION.test(heading.text)) excludedSection = heading;
       continue;
     }
 
-    if (excluded) continue;
+    if (excludedSection) continue;
     const item = line.match(LIST_ITEM);
     if (!item) continue;
 
