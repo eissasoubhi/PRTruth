@@ -5,10 +5,10 @@ const BOLD_HEADING = /^\s*\*\*(.+?)\*\*\s*$/;
 const CHECKBOX = /^\s*[-*+]\s+\[([ xX])\]\s+(.+)$/;
 const LIST_ITEM = /^\s*(?:[-*+]|\d+[.)])\s+(.+)$/;
 const LABELED_CRITERION = /^\s*(?:AC|REQ|CRITERION)[-_ ]?\d+(?:\s*\[[^\]]+\])?\s*[:.)-]\s*(.*)$/i;
-const ACCEPTANCE_SECTION = /^(?:acceptance criteria|requirements?|definition of done|success criteria|criteria)(?:\s*\([^)]*\))?$/i;
+const ACCEPTANCE_SECTION = /^(?:acceptance(?: criteria)?|requirements?|definition of done|success criteria|criteria)(?:\s*\([^)]*\))?$/i;
 const EXPECTED_SECTION = /^(?:expected behavior|desired behavior|expected result|desired result)$/i;
 const CHANGE_SECTION = /^(?:recommended change|proposed change)(?:\s*\([^)]*\))?$/i;
-const EXCLUDED_SECTION = /^(?:contributor checklist|checklist|initial checks?|prerequisites?|affected components?|build scans?|issue reasons?|out of scope|to reproduce|steps? to reproduce|reproduction(?: steps?)?|how (?:has this been )?tested|testing instructions?|references?|technical notes?|screenshots?|additional notes?)$/i;
+const EXCLUDED_SECTION = /^(?:contributor checklist|checklist|initial checks?|prerequisites?|affected components?|evidence|build scans?|issue reasons?|out of scope|to reproduce|steps? to reproduce|reproduction(?: steps?)?|how (?:has this been )?tested|testing instructions?|references?|technical notes?|screenshots?|additional notes?)$/i;
 
 type MarkdownHeading = {
   kind: "atx" | "bold";

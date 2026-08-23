@@ -52,6 +52,25 @@ Something else.
     expect(result[1]?.checked).toBe(true);
   });
 
+  it("recognizes singular Acceptance headings and ignores preceding evidence lists", () => {
+    const result = extractRequirements(`
+**Evidence:**
+- package.json already exposes a vitest test script.
+- the old workflow never ran frontend tests.
+
+**Acceptance:**
+- npm test runs in CI for the frontend on pull requests and pushes to main.
+- the test step uses npm ci and the same Node version as the build job.
+- the frontend test job appears in checks and gates the pull request.
+`);
+
+    expect(result.map((item) => item.text)).toEqual([
+      "npm test runs in CI for the frontend on pull requests and pushes to main.",
+      "the test step uses npm ci and the same Node version as the build job.",
+      "the frontend test job appears in checks and gates the pull request."
+    ]);
+  });
+
   it("does not mix contributor checklists into explicit acceptance criteria", () => {
     const result = extractRequirements(`
 ## Scope
