@@ -190,6 +190,32 @@ A cookie notice is partially blocked.
     expect(result).toEqual([]);
   });
 
+  it("excludes generated CI triage metadata lists", () => {
+    const result = extractRequirements(`
+**Build Scans:**
+- [elasticsearch-intake #35532 / part3](https://example.test/intake)
+- [elasticsearch-pull-request #124747 / part-3](https://example.test/pr)
+
+**Reproduction Line:**
+\`\`\`
+./gradlew :some:test
+\`\`\`
+
+**Failure Message:**
+\`\`\`
+expected at most one time bucket
+\`\`\`
+
+**Issue Reasons:**
+- [main] 2 failures in test test (0.2% fail rate in 813 executions)
+
+**Note:**
+This issue was created using test triage automation.
+`);
+
+    expect(result).toEqual([]);
+  });
+
   it("ignores list-like lines inside fenced code blocks", () => {
     const result = extractRequirements(`
 Problem description.
