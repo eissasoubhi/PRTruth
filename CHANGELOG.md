@@ -2,6 +2,30 @@
 
 All notable changes to PRTruth are documented in this file.
 
+## 0.1.17
+
+Evidence provenance and CLI usability release.
+
+### Evidence integrity
+
+- Adds conservative named-tool provenance learned from real public project histories for Oxlint, Stylelint, shfmt, Markdownlint, ESLint, SwiftFormat, SwiftLint, ktlint, detekt, staticcheck, gocritic, errcheck, deadcode, Pyright, Terraform validation tools, SQLFluff, ansible-lint, Astral `ty`, Pyrefly, Gosec, Spectral, Vale, check-jsonschema, and Zizmor.
+- Composite claims require independent evidence for every explicitly named tool instead of letting one matching green check prove the whole claim.
+- Setup/install/config-only steps remain non-probative, and explicit matching failures still take precedence.
+- Explicit zero-diagnostic wording such as `0 errors`, `0 findings`, and similar supported forms is accepted only when the count is exactly zero and matching executable evidence is present.
+- Trivy remains conservative where a successful scanner action is not configured to fail on findings; green execution alone is not promoted to proof of a clean scan.
+
+### CLI and adoption
+
+- Terminal reports now use readable ANSI styling in interactive terminals: green `PROVEN`, red `FAILED`, yellow `UNPROVEN`/`NOT_PROVEN`, plus formatted headings and separators.
+- Adds `--color auto|always|never`, with `NO_COLOR` and `FORCE_COLOR` support; redirected/file output stays ANSI-free.
+- Top-level `prtruth --help` now includes the complete `verify` option reference, examples, and relevant environment variables.
+- GitHub Action and launch documentation is aligned to `v0.1.17` and remains repository-neutral.
+
+### Verification and distribution
+
+- CLI help and color behavior have regression coverage, including a built-CLI help smoke that checks every current verify option is discoverable.
+- The npm discovery keyword `ai` remains unchanged.
+
 ## 0.1.8
 
 Evidence semantics and release-distribution reliability patch.
