@@ -105,6 +105,7 @@ function toolSpecificValidationMatchers(text: string): ScopeMatcher[] {
   if (/\bsqlfluff\b/i.test(text)) tools.push(matcher("sqlfluff", /\bsqlfluff\b/i));
   if (/\bansible[- ]lint\b/i.test(text)) tools.push(matcher("ansible-lint", /\bansible[- ]lint\b/i));
   if (/\bspectral\b/i.test(text)) tools.push(matcher("spectral", /\bspectral\b/i));
+  if (/\bvale\b/i.test(text)) tools.push(matcher("vale", /^(?!.*\bprepare\b).*\bvale\b/i));
   if (/\btrunk\s+(?:check|fmt)\b/i.test(text)) tools.push(matcher("trunk", /\btrunk\b/i));
   if (/\bterraform\s+fmt\b/i.test(text)) tools.push(matcher("terraform fmt", /\bterraform\s+fmt\b/i));
   if (/\bterraform\s+validate\b/i.test(text)) tools.push(matcher("terraform validate", /\bterraform\s+validate\b/i));
