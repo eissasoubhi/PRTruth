@@ -2,6 +2,27 @@
 
 All notable changes to PRTruth are documented in this file.
 
+## 0.1.18
+
+Evidence-integrity corrective release.
+
+### Fixed
+
+- Explicit quantitative artifact-count claims such as a publish producing a specific number of files, artifacts, archive entries, or packages can no longer become `PROVEN` solely from generic successful build checks.
+- Quantified artifact-count results that would otherwise be `PROVEN` remain `UNPROVEN` until observable evidence carries the stated value; explicit `FAILED` and existing `UNPROVEN` precedence are preserved.
+- Ordinary non-quantified build claims remain provable from matching successful build evidence.
+
+### Dogfooding
+
+- Added an independent public UI/browser oracle and a publishing/release oracle.
+- Real-project dogfooding exposed the false `PROVEN` above on a claim that a probe publish wrote 165 files while the observed GitHub evidence only showed generic green build jobs.
+- Browser-measured UI requirements remain conservative when GitHub evidence does not expose the specific measurements.
+
+### Distribution
+
+- Public GitHub Action examples are aligned to `v0.1.18` and remain repository-neutral.
+- The npm discovery keyword `ai` remains unchanged.
+
 ## 0.1.17
 
 Evidence provenance and CLI usability release.
