@@ -2,6 +2,10 @@ import { assessCompletionClaim, buildClaimResults } from "./claim-evidence.js";
 import { assessGenericCiSuccess } from "./ci-evidence.js";
 import { extractCompletionClaims } from "./claims.js";
 import {
+  selectTrustedCommentRequirements,
+  shouldInspectIssueComments
+} from "./comment-requirements.js";
+import {
   findPatchCandidateEvidence,
   findQuantitativePatchMismatchEvidence,
   type PatchFile
@@ -186,6 +190,10 @@ export async function verifyPullRequest(input: {
     client.getPullFiles(input.repository, input.prNumber),
     discoverInstructionFiles(client, input.repository)
   ]);
+  const issueBody = issue.body ?? "";
+  const issueComments = shouldInspectIssueComments(issueBody)
+    ? await client.getIssueComments(input.repository, issueNumber)
+    : [];
 
   const [checkRuns, workflowStepChecks, requiredCheckContexts] = await Promise.all([
     client.getCheckRuns(input.repository, pull.head.sha),
@@ -212,7 +220,16 @@ export async function verifyPullRequest(input: {
     }))
   ];
 
-  const requirements = extractRequirements(issue.body ?? "");
+  const commentRequirements = selectTrustedCommentRequirements(
+    issueBody,
+    issueComments.map((comment) => ({
+      body: comment.body,
+      authorAssociation: comment.author_association
+    }))
+  );
+  const requirements = commentRequirements.length > 0
+    ? commentRequirements
+    : extractRequirements(issueBody);
   const claims = extractCompletionClaims(pull.body ?? "");
   const changedFiles = files.map((file) => file.filename);
   const claimResults = buildClaimResults(claims, checks, changedFiles)

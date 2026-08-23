@@ -1,0 +1,104 @@
+name: Manual oracle batch 7
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/manual-oracle-batch-7.yml'
+      - 'src/**'
+      - 'tests/**'
+      - 'docs/manual-oracle-corpus.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  actions: read
+  checks: read
+
+jobs:
+  public-oracle:
+    runs-on: ubuntu-24.04
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: 'false'
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout PRTruth
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+      - name: Build current PRTruth source
+        run: pnpm build
+      - name: Run maintainer-comment acceptance-criteria oracle
+        run: |
+          mkdir -p oracle-results
+          node dist/cli.js verify \
+            --repo microsoft/amplifier-bundle-attractor \
+            --issue 204 \
+            --pr 223 \
+            --policy report-only \
+            --format json \
+            --output oracle-results/amplifier-204-223.json
+      - name: Assert authenticated maintainer criteria win
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync('oracle-results/amplifier-204-223.json', 'utf8'));
+          const report = payload.report ?? payload;
+          const results = report.results ?? [];
+          const texts = results.map((result) => result.requirement?.text ?? '');
+
+          if (results.length !== 6) {
+            throw new Error(`Expected six ratified maintainer acceptance criteria, got ${results.length}`);
+          }
+
+          const expectedSignals = [
+            'compute_cost',
+            'honest None',
+            'Client.complete()',
+            'provider:response',
+            'summing Usage objects',
+            'existing token-field Usage arithmetic'
+          ];
+          for (const signal of expectedSignals) {
+            if (!texts.some((text) => text.includes(signal))) {
+              throw new Error(`Missing ratified acceptance criterion containing: ${signal}`);
+            }
+          }
+
+          const staleBodyDescriptions = [
+            'each provider module ships a private',
+            'The loop-pipeline `provider:response` event carries token `usage` but **no cost**',
+            'Publish `compute_cost` + rates as a stable public API'
+          ];
+          for (const stale of staleBodyDescriptions) {
+            if (texts.some((text) => text.includes(stale))) {
+              throw new Error(`Issue-body background text was incorrectly extracted as a requirement: ${stale}`);
+            }
+          }
+
+          const req = Object.groupBy(results, (r) => r.status);
+          console.log(`verdict=${report.verdict}`);
+          console.log(`requirements=${results.length} proven=${req.PROVEN?.length ?? 0} failed=${req.FAILED?.length ?? 0} unproven=${req.UNPROVEN?.length ?? 0}`);
+          for (const result of results) {
+            console.log(`${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing>'}`);
+          }
+          NODE
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: prtruth-manual-oracle-batch-7
+          path: oracle-results/*.json

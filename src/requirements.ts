@@ -4,7 +4,8 @@ const ATX_HEADING = /^(#{1,6})\s+(.+?)\s*#*\s*$/;
 const BOLD_HEADING = /^\s*\*\*(.+?)\*\*\s*$/;
 const CHECKBOX = /^\s*[-*+]\s+\[([ xX])\]\s+(.+)$/;
 const LIST_ITEM = /^\s*(?:[-*+]|\d+[.)])\s+(.+)$/;
-const ACCEPTANCE_SECTION = /^(?:acceptance criteria|requirements?|definition of done|success criteria|criteria)$/i;
+const LABELED_CRITERION = /^\s*(?:AC|REQ|CRITERION)[-_ ]?\d+(?:\s*\[[^\]]+\])?\s*[:.)-]\s*(.*)$/i;
+const ACCEPTANCE_SECTION = /^(?:acceptance criteria|requirements?|definition of done|success criteria|criteria)(?:\s*\([^)]*\))?$/i;
 const EXPECTED_SECTION = /^(?:expected behavior|desired behavior|expected result|desired result)$/i;
 const CHANGE_SECTION = /^(?:recommended change|proposed change)(?:\s*\([^)]*\))?$/i;
 const EXCLUDED_SECTION = /^(?:contributor checklist|checklist|initial checks?|prerequisites?|affected components?|build scans?|issue reasons?|out of scope|to reproduce|steps? to reproduce|reproduction(?: steps?)?|how (?:has this been )?tested|testing instructions?|references?|technical notes?|screenshots?|additional notes?)$/i;
@@ -132,7 +133,60 @@ function extractListSections(
   return requirements;
 }
 
+function extractLabeledAcceptanceCriteria(lines: string[]): Requirement[] {
+  let section: MarkdownHeading | null = null;
+  let current: string[] = [];
+  const requirements: Requirement[] = [];
+
+  const flush = () => {
+    const text = normalizeText(current.join(" "));
+    current = [];
+    if (!text) return;
+    requirements.push({
+      id: `REQ-${requirements.length + 1}`,
+      text,
+      source: "acceptance-section"
+    });
+  };
+
+  for (const line of lines) {
+    const heading = parseHeading(line);
+    if (heading) {
+      if (section && closesSection(section, heading)) {
+        flush();
+        section = null;
+      }
+      if (ACCEPTANCE_SECTION.test(heading.text)) {
+        flush();
+        section = heading;
+      }
+      continue;
+    }
+
+    if (!section) continue;
+
+    const criterion = line.match(LABELED_CRITERION);
+    if (criterion) {
+      flush();
+      current.push(criterion[1] ?? "");
+      continue;
+    }
+
+    if (current.length === 0) continue;
+    const trimmed = line.trim();
+    if (!trimmed || /^>|^<!--/.test(trimmed)) continue;
+
+    const listItem = trimmed.match(LIST_ITEM);
+    current.push(listItem?.[1] ?? trimmed);
+  }
+
+  flush();
+  return requirements;
+}
+
 function extractAcceptanceSections(lines: string[]): Requirement[] {
+  const labeled = extractLabeledAcceptanceCriteria(lines);
+  if (labeled.length > 0) return labeled;
   return extractListSections(lines, ACCEPTANCE_SECTION, "acceptance-section");
 }
 
@@ -254,6 +308,11 @@ function extractFallbackLists(lines: string[]): Requirement[] {
   }
 
   return requirements;
+}
+
+export function extractExplicitRequirements(markdown: string): Requirement[] {
+  const lines = stripFencedCode(markdown.split(/\r?\n/));
+  return withIds(extractAcceptanceSections(lines));
 }
 
 export function extractRequirements(markdown: string): Requirement[] {
