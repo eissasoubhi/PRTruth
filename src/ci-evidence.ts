@@ -89,6 +89,7 @@ function toolSpecificValidationMatchers(text: string): ScopeMatcher[] {
   if (/\bbandit\b/i.test(text)) tools.push(matcher("bandit", /\bbandit\b/i));
   if (/\bpip[- ]audit\b/i.test(text)) tools.push(matcher("pip-audit", /\bpip[- ]audit\b/i));
   if (/\brubocop\b/i.test(text)) tools.push(matcher("rubocop", /\brubocop\b/i));
+  if (/\bbrakeman\b/i.test(text)) tools.push(matcher("brakeman", /\bbrakeman\b/i));
   if (/\bstandard(?:rb| ruby)\b/i.test(text)) tools.push(matcher("standardrb", /\bstandard(?:rb)?\b/i));
   if (/\bphpcs\b/i.test(text)) tools.push(matcher("phpcs", /\bphpcs\b/i));
   if (/\bphpstan\b/i.test(text)) tools.push(matcher("phpstan", /\bphpstan\b/i));
