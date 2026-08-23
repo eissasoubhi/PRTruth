@@ -18,14 +18,14 @@ export function selectTrustedCommentRequirements(
   issueBody: string,
   comments: IssueCommentRequirementsSource[]
 ): Requirement[] {
-  const delegatedByIssue = shouldInspectIssueComments(issueBody);
-  let selected: Requirement[] = [];
+  if (!shouldInspectIssueComments(issueBody)) return [];
 
+  let selected: Requirement[] = [];
   for (const comment of comments) {
     if (!TRUSTED_ASSOCIATIONS.has(comment.authorAssociation.toUpperCase())) continue;
 
     const body = comment.body ?? "";
-    if (!delegatedByIssue && !RATIFICATION_LANGUAGE.test(body)) continue;
+    if (!RATIFICATION_LANGUAGE.test(body)) continue;
 
     const requirements = extractExplicitRequirements(body);
     if (requirements.length > 0) selected = requirements;
