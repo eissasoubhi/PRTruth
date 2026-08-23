@@ -10,11 +10,15 @@ const TRUSTED_ASSOCIATIONS = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
 const RATIFICATION_LANGUAGE = /\b(?:ratif(?:y|ied|ying)|adopt(?:ed|ing)?|supersed(?:e|es|ed|ing)|settling ruling|binding criteria|criteria bind)\b/i;
 const BODY_DELEGATES_TO_COMMENT = /\bacceptance criteria\b[^.\n]{0,140}\b(?:maintainer|issue) comment\b|\bacceptance criteria\b[^.\n]{0,140}\bfollow(?:s|ing)?\b[^.\n]{0,80}\bcomment\b/i;
 
+export function shouldInspectIssueComments(issueBody: string): boolean {
+  return BODY_DELEGATES_TO_COMMENT.test(issueBody);
+}
+
 export function selectTrustedCommentRequirements(
   issueBody: string,
   comments: IssueCommentRequirementsSource[]
 ): Requirement[] {
-  const delegatedByIssue = BODY_DELEGATES_TO_COMMENT.test(issueBody);
+  const delegatedByIssue = shouldInspectIssueComments(issueBody);
   let selected: Requirement[] = [];
 
   for (const comment of comments) {
