@@ -88,6 +88,57 @@ describe("GitHub evidence pagination", () => {
     )).toBe(false);
   });
 
+  it("uses only the latest rerun for a workflow on the same commit", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+
+      if (url.includes("/actions/runs?head_sha=") && url.includes("&page=1")) {
+        return jsonResponse({
+          workflow_runs: [
+            { id: 700, workflow_id: 21 },
+            { id: 701, workflow_id: 21 }
+          ]
+        });
+      }
+
+      if (url.includes("/actions/runs/701/jobs?") && url.includes("&page=1")) {
+        return jsonResponse({
+          jobs: [
+            {
+              name: "PR Validation",
+              steps: [
+                { name: "Enforce Blocking Issues", status: "completed", conclusion: "success" }
+              ]
+            }
+          ]
+        });
+      }
+
+      if (url.includes("/actions/runs/700/jobs?")) {
+        throw new Error("Older superseded workflow run must not be fetched");
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    const client = new GitHubClient("token");
+    const checks = await client.getWorkflowStepChecks("acme/shop", "same-head-sha");
+
+    expect(checks).toEqual([
+      {
+        name: "PR Validation / Enforce Blocking Issues",
+        status: "completed",
+        conclusion: "success"
+      }
+    ]);
+    expect(fetchMock.mock.calls.some(([input]) =>
+      String(input).includes("/actions/runs/701/jobs?")
+    )).toBe(true);
+    expect(fetchMock.mock.calls.some(([input]) =>
+      String(input).includes("/actions/runs/700/jobs?")
+    )).toBe(false);
+  });
+
   it("collects workflow jobs beyond the first 100 results", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
