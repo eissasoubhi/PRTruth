@@ -1,7 +1,10 @@
 import { assessCompletionClaim, buildClaimResults } from "./claim-evidence.js";
 import { assessGenericCiSuccess } from "./ci-evidence.js";
 import { extractCompletionClaims } from "./claims.js";
-import { selectTrustedCommentRequirements } from "./comment-requirements.js";
+import {
+  selectTrustedCommentRequirements,
+  shouldInspectIssueComments
+} from "./comment-requirements.js";
 import {
   findPatchCandidateEvidence,
   findQuantitativePatchMismatchEvidence,
@@ -182,12 +185,15 @@ export async function verifyPullRequest(input: {
   const pull = await client.getPull(input.repository, input.prNumber);
   const issueNumber = resolveIssueNumber(input.issueNumber, pull.body ?? "");
 
-  const [issue, issueComments, files, instructions] = await Promise.all([
+  const [issue, files, instructions] = await Promise.all([
     client.getIssue(input.repository, issueNumber),
-    client.getIssueComments(input.repository, issueNumber),
     client.getPullFiles(input.repository, input.prNumber),
     discoverInstructionFiles(client, input.repository)
   ]);
+  const issueBody = issue.body ?? "";
+  const issueComments = shouldInspectIssueComments(issueBody)
+    ? await client.getIssueComments(input.repository, issueNumber)
+    : [];
 
   const [checkRuns, workflowStepChecks, requiredCheckContexts] = await Promise.all([
     client.getCheckRuns(input.repository, pull.head.sha),
@@ -214,7 +220,6 @@ export async function verifyPullRequest(input: {
     }))
   ];
 
-  const issueBody = issue.body ?? "";
   const commentRequirements = selectTrustedCommentRequirements(
     issueBody,
     issueComments.map((comment) => ({
