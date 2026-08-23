@@ -58,10 +58,11 @@ jobs:
           const payload = JSON.parse(readFileSync('oracle-results/skills-35-45.json', 'utf8'));
           const report = payload.report ?? payload;
           const results = report.results ?? [];
-          if (results.length !== 22) throw new Error(`Expected 22 acceptance requirements, got ${results.length}`);
+          if (results.length !== 7) throw new Error(`Expected 7 acceptance requirements, got ${results.length}`);
           const expectedSignals = [
             'skill-writing-standards/SKILL.md',
-            'disable-model-invocation',
+            "required-structure bar",
+            'self-containment exemption',
             'docs/skill-writing-best-practices.md',
             'CODING_STANDARDS.md is trimmed',
             'run twice against this repo',
