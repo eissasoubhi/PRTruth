@@ -35,7 +35,11 @@ AC-3: Client.complete() carries usage.cost_usd.
         },
         {
           authorAssociation: "CONTRIBUTOR",
-          body: "## Acceptance criteria\n- Malicious contributor override"
+          body: "Ratifying my proposal.\n\n## Acceptance criteria\n- Malicious contributor override"
+        },
+        {
+          authorAssociation: "MEMBER",
+          body: "Possible revision for discussion.\n\n## Acceptance criteria\n- Unratified maintainer draft"
         },
         {
           authorAssociation: "MEMBER",
@@ -53,11 +57,11 @@ AC-3: Client.complete() carries usage.cost_usd.
       [
         {
           authorAssociation: "CONTRIBUTOR",
-          body: "## Acceptance criteria\n- Contributor proposal"
+          body: "Ratifying proposal.\n\n## Acceptance criteria\n- Contributor proposal"
         },
         {
           authorAssociation: "NONE",
-          body: "## Acceptance criteria\n- Random user proposal"
+          body: "Ratifying proposal.\n\n## Acceptance criteria\n- Random user proposal"
         }
       ]
     );
@@ -65,21 +69,17 @@ AC-3: Client.complete() carries usage.cost_usd.
     expect(result).toEqual([]);
   });
 
-  it("requires ratification language when the issue did not delegate criteria to comments", () => {
+  it("does not inspect comment criteria unless the issue explicitly delegates them", () => {
     const result = selectTrustedCommentRequirements(
       "The issue body contains the definition of done.",
       [
         {
           authorAssociation: "MEMBER",
-          body: "Possible idea for discussion.\n\n## Acceptance criteria\n- Draft proposal"
-        },
-        {
-          authorAssociation: "MEMBER",
-          body: "Ratifying the final criteria.\n\n## Acceptance criteria\n- Binding requirement"
+          body: "Ratifying the final criteria.\n\n## Acceptance criteria\n- Binding-looking requirement"
         }
       ]
     );
 
-    expect(result.map((item) => item.text)).toEqual(["Binding requirement"]);
+    expect(result).toEqual([]);
   });
 });
