@@ -1,0 +1,80 @@
+name: Scoped runner dogfood
+
+on:
+  pull_request:
+    paths:
+      - "src/github.ts"
+      - "src/claim-evidence.ts"
+      - "test/workflow-job-scope-evidence.test.ts"
+      - ".github/workflows/scoped-runner-dogfood.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-ai-saas-runner-scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - run: pnpm install --no-frozen-lockfile --prod=false --force
+      - run: pnpm build
+
+      - name: Verify real Linux ARM64 PR history
+        run: |
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo eissasoubhi/ai-saas-factory \
+            --issue 1 \
+            --pr 3 \
+            --policy report-only \
+            --format json \
+            --output scoped-runner-report.json
+
+      - name: Assert structured runner labels prove only the scoped CI claim
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(readFileSync('scoped-runner-report.json', 'utf8')).report;
+          const claim = (report.claimResults ?? []).find((result) =>
+            result.claim?.text?.includes('CI passes install, lint, typecheck, tests and production build')
+          );
+          if (!claim) throw new Error('Expected the Linux ARM64 completion claim');
+          if (claim.status !== 'PROVEN') {
+            throw new Error(`Expected structured Linux ARM64 job labels to prove the claim, got ${claim.status}: ${claim.reason}`);
+          }
+          for (const token of ['Linux', 'ARM64']) {
+            if (!claim.evidence?.some((item) => item.kind === 'ci' && item.summary.includes(token))) {
+              throw new Error(`Expected CI evidence to retain ${token} runner scope`);
+            }
+          }
+
+          const coverage = report.results.find((result) =>
+            result.requirement?.text === 'Automated tests for core identity/workspace flows'
+          );
+          if (!coverage || coverage.status !== 'UNPROVEN') {
+            throw new Error(`Runner labels must not prove broad business-flow coverage, got ${coverage?.status ?? 'missing'}`);
+          }
+
+          console.log(`Scoped CI claim: ${claim.status}`);
+          console.log(`Business-flow coverage requirement: ${coverage.status}`);
+          NODE
