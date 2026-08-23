@@ -1,0 +1,70 @@
+name: Manual oracle batch 7
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/manual-oracle-batch-7.yml'
+      - 'src/**'
+      - 'tests/**'
+      - 'docs/manual-oracle-corpus.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  checks: read
+
+jobs:
+  public-oracle:
+    runs-on: ubuntu-24.04
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: 'false'
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout PRTruth
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+      - name: Build current PRTruth source
+        run: pnpm build
+      - name: Run maintainer-comment acceptance-criteria oracle
+        run: |
+          mkdir -p oracle-results
+          node dist/cli.js verify \
+            --repo microsoft/amplifier-bundle-attractor \
+            --issue 204 \
+            --pr 223 \
+            --policy report-only \
+            --format json \
+            --output oracle-results/amplifier-204-223.json
+      - name: Print compact result
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync('oracle-results/amplifier-204-223.json', 'utf8'));
+          const report = payload.report ?? payload;
+          const req = Object.groupBy(report.results ?? [], (r) => r.status);
+          console.log(`verdict=${report.verdict}`);
+          console.log(`requirements=${report.results?.length ?? 0} proven=${req.PROVEN?.length ?? 0} failed=${req.FAILED?.length ?? 0} unproven=${req.UNPROVEN?.length ?? 0}`);
+          for (const result of report.results ?? []) {
+            console.log(`${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing>'}`);
+          }
+          NODE
+      - name: Upload report
+        uses: actions/upload-artifact@v7
+        with:
+          name: prtruth-manual-oracle-batch-7
+          path: oracle-results/*.json
