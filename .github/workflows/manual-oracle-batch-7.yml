@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  issues: read
   actions: read
   checks: read
 
@@ -50,20 +51,53 @@ jobs:
             --policy report-only \
             --format json \
             --output oracle-results/amplifier-204-223.json
-      - name: Print compact result
+      - name: Assert authenticated maintainer criteria win
         run: |
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const payload = JSON.parse(readFileSync('oracle-results/amplifier-204-223.json', 'utf8'));
           const report = payload.report ?? payload;
-          const req = Object.groupBy(report.results ?? [], (r) => r.status);
+          const results = report.results ?? [];
+          const texts = results.map((result) => result.requirement?.text ?? '');
+
+          if (results.length !== 6) {
+            throw new Error(`Expected six ratified maintainer acceptance criteria, got ${results.length}`);
+          }
+
+          const expectedSignals = [
+            'compute_cost',
+            'honest None',
+            'Client.complete()',
+            'provider:response',
+            'summing Usage objects',
+            'existing token-field Usage arithmetic'
+          ];
+          for (const signal of expectedSignals) {
+            if (!texts.some((text) => text.includes(signal))) {
+              throw new Error(`Missing ratified acceptance criterion containing: ${signal}`);
+            }
+          }
+
+          const staleBodyDescriptions = [
+            'each provider module ships a private',
+            'The loop-pipeline `provider:response` event carries token `usage` but **no cost**',
+            'Publish `compute_cost` + rates as a stable public API'
+          ];
+          for (const stale of staleBodyDescriptions) {
+            if (texts.some((text) => text.includes(stale))) {
+              throw new Error(`Issue-body background text was incorrectly extracted as a requirement: ${stale}`);
+            }
+          }
+
+          const req = Object.groupBy(results, (r) => r.status);
           console.log(`verdict=${report.verdict}`);
-          console.log(`requirements=${report.results?.length ?? 0} proven=${req.PROVEN?.length ?? 0} failed=${req.FAILED?.length ?? 0} unproven=${req.UNPROVEN?.length ?? 0}`);
-          for (const result of report.results ?? []) {
+          console.log(`requirements=${results.length} proven=${req.PROVEN?.length ?? 0} failed=${req.FAILED?.length ?? 0} unproven=${req.UNPROVEN?.length ?? 0}`);
+          for (const result of results) {
             console.log(`${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing>'}`);
           }
           NODE
       - name: Upload report
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: prtruth-manual-oracle-batch-7
