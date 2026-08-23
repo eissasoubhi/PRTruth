@@ -23,6 +23,27 @@ function normalizeHeading(value: string): string {
   return normalizeText(value).replace(/[:：]\s*$/, "");
 }
 
+function stripFencedCode(lines: string[]): string[] {
+  let fence: "```" | "~~~" | null = null;
+  return lines.map((line) => {
+    const trimmed = line.trimStart();
+    if (!fence) {
+      if (trimmed.startsWith("```")) {
+        fence = "```";
+        return "";
+      }
+      if (trimmed.startsWith("~~~")) {
+        fence = "~~~";
+        return "";
+      }
+      return line;
+    }
+
+    if (trimmed.startsWith(fence)) fence = null;
+    return "";
+  });
+}
+
 function parseHeading(line: string): MarkdownHeading | null {
   const atx = line.match(ATX_HEADING);
   if (atx) {
@@ -198,7 +219,7 @@ function extractExpectedBehavior(lines: string[]): Requirement[] {
       continue;
     }
 
-    if (/^```|^~~~|^>|^<!--/.test(trimmed)) continue;
+    if (/^>|^<!--/.test(trimmed)) continue;
     paragraph.push(trimmed);
   }
 
@@ -236,7 +257,7 @@ function extractFallbackLists(lines: string[]): Requirement[] {
 }
 
 export function extractRequirements(markdown: string): Requirement[] {
-  const lines = markdown.split(/\r?\n/);
+  const lines = stripFencedCode(markdown.split(/\r?\n/));
 
   const acceptance = extractAcceptanceSections(lines);
   if (acceptance.length > 0) return withIds(acceptance);
