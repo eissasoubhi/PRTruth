@@ -55,6 +55,7 @@ interface GitHubWorkflowJobStepResponse {
 interface GitHubWorkflowJobResponse {
   name: string;
   html_url?: string;
+  labels?: string[];
   steps?: GitHubWorkflowJobStepResponse[] | null;
 }
 
@@ -159,6 +160,11 @@ function dedupeRequiredChecks(checks: RequiredStatusCheck[]): RequiredStatusChec
   });
 }
 
+function workflowJobEvidenceName(job: GitHubWorkflowJobResponse): string {
+  const labels = [...new Set((job.labels ?? []).map((label) => label.trim()).filter(Boolean))];
+  return labels.length > 0 ? `${job.name} [${labels.join(", ")}]` : job.name;
+}
+
 export class GitHubClient {
   constructor(private readonly token = process.env.GITHUB_TOKEN) {}
 
@@ -251,14 +257,15 @@ export class GitHubClient {
       );
 
       return jobsByRun.flatMap((jobs) =>
-        jobs.flatMap((job) =>
-          (job.steps ?? []).map((step) => ({
-            name: `${job.name} / ${step.name}`,
+        jobs.flatMap((job) => {
+          const jobName = workflowJobEvidenceName(job);
+          return (job.steps ?? []).map((step) => ({
+            name: `${jobName} / ${step.name}`,
             status: step.status,
             conclusion: step.conclusion,
             ...(job.html_url ? { html_url: job.html_url } : {})
-          }))
-        )
+          }));
+        })
       );
     } catch (error) {
       if (error instanceof GitHubApiError && (error.status === 403 || error.status === 404)) {
@@ -279,40 +286,24 @@ export class GitHubClient {
           )
         )
       ]);
+      const branchChecks = branchInfo.protection?.required_status_checks;
+      const legacyChecks = branchChecks?.checks?.map((check) => ({
+        context: check.context,
+        ...(positiveSourceId(check.app_id) !== undefined
+          ? { appId: positiveSourceId(check.app_id) }
+          : {})
+      })) ?? branchChecks?.contexts?.map((context) => ({ context })) ?? [];
+      const ruleChecks = rules
+        .filter((rule) => rule.type === "required_status_checks")
+        .flatMap((rule) => rule.parameters?.required_status_checks ?? [])
+        .map((check) => ({
+          context: check.context,
+          ...(positiveSourceId(check.integration_id) !== undefined
+            ? { appId: positiveSourceId(check.integration_id) }
+            : {})
+        }));
 
-      const requiredChecks: RequiredStatusCheck[] = [];
-      const classicStatusChecks = branchInfo.protection?.required_status_checks;
-      const classicChecks = classicStatusChecks?.checks ?? [];
-      const sourceAwareContexts = new Set<string>();
-
-      for (const check of classicChecks) {
-        const context = check.context.trim();
-        if (!context) continue;
-        const appId = positiveSourceId(check.app_id);
-        requiredChecks.push({ context, ...(appId !== undefined ? { appId } : {}) });
-        sourceAwareContexts.add(normalizeContext(context));
-      }
-
-      // Preserve distinct legacy contexts, but do not add a generic duplicate
-      // for a context already represented by source-aware `checks` metadata.
-      for (const contextValue of classicStatusChecks?.contexts ?? []) {
-        const context = contextValue.trim();
-        if (context && !sourceAwareContexts.has(normalizeContext(context))) {
-          requiredChecks.push({ context });
-        }
-      }
-
-      for (const rule of rules) {
-        if (rule.type !== "required_status_checks") continue;
-        for (const check of rule.parameters?.required_status_checks ?? []) {
-          const context = check.context.trim();
-          if (!context) continue;
-          const appId = positiveSourceId(check.integration_id);
-          requiredChecks.push({ context, ...(appId !== undefined ? { appId } : {}) });
-        }
-      }
-
-      return dedupeRequiredChecks(requiredChecks);
+      return dedupeRequiredChecks([...legacyChecks, ...ruleChecks]);
     } catch (error) {
       if (error instanceof GitHubApiError && (error.status === 403 || error.status === 404)) {
         return null;
@@ -321,14 +312,14 @@ export class GitHubClient {
     }
   }
 
-  async getContent(repository: string, path: string): Promise<GitHubContentResponse | null> {
-    return this.requestOptional(`/repos/${repository}/contents/${path}`);
+  async getRepositoryContents(repository: string, path = ""): Promise<GitHubContentResponse[]> {
+    const encodedPath = path
+      .split("/")
+      .map((part) => encodeURIComponent(part))
+      .join("/");
+    const response = await this.request<GitHubContentResponse[] | GitHubContentResponse>(
+      `/repos/${repository}/contents/${encodedPath}`
+    );
+    return Array.isArray(response) ? response : [response];
   }
 }
-
-export type {
-  GitHubIssueResponse,
-  GitHubPullResponse,
-  GitHubPullFileResponse,
-  GitHubCheckRunResponse
-};
