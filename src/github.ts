@@ -8,6 +8,12 @@ interface GitHubIssueResponse {
   html_url: string;
 }
 
+interface GitHubIssueCommentResponse {
+  id: number;
+  body: string | null;
+  author_association: string;
+}
+
 interface GitHubPullResponse {
   number: number;
   title: string;
@@ -207,6 +213,14 @@ export class GitHubClient {
     return this.request(`/repos/${repository}/issues/${issueNumber}`);
   }
 
+  async getIssueComments(repository: string, issueNumber: number): Promise<GitHubIssueCommentResponse[]> {
+    return collectPages((page, perPage) =>
+      this.request<GitHubIssueCommentResponse[]>(
+        `/repos/${repository}/issues/${issueNumber}/comments?per_page=${perPage}&page=${page}`
+      )
+    );
+  }
+
   async getPull(repository: string, prNumber: number): Promise<GitHubPullResponse> {
     return this.request(`/repos/${repository}/pulls/${prNumber}`);
   }
@@ -335,6 +349,7 @@ export class GitHubClient {
 
 export type {
   GitHubIssueResponse,
+  GitHubIssueCommentResponse,
   GitHubPullResponse,
   GitHubPullFileResponse,
   GitHubCheckRunResponse
