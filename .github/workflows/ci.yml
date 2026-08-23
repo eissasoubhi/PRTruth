@@ -61,3 +61,15 @@ jobs:
           EXPECTED_VERSION="$(node -p "require('./package.json').version")"
           ACTUAL_VERSION="$(node dist/cli.js --version)"
           test "${ACTUAL_VERSION}" = "${EXPECTED_VERSION}"
+
+      - name: CLI help smoke
+        shell: bash
+        run: |
+          ROOT_HELP="$(node dist/cli.js --help)"
+          VERIFY_HELP="$(node dist/cli.js verify --help)"
+          for option in --issue --pr --repo --format --output --github-summary --comment --policy --color; do
+            grep -Fq -- "${option}" <<< "${ROOT_HELP}"
+            grep -Fq -- "${option}" <<< "${VERIFY_HELP}"
+          done
+          grep -Fq -- "NO_COLOR" <<< "${ROOT_HELP}"
+          grep -Fq -- "FORCE_COLOR" <<< "${ROOT_HELP}"
