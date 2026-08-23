@@ -51,13 +51,37 @@ jobs:
             --policy report-only \
             --format json \
             --output oracle-results/kubetix-359-373.json
-      - name: Print oracle matrix
+      - name: Assert exact acceptance set and print matrix
         run: |
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const payload = JSON.parse(readFileSync('oracle-results/kubetix-359-373.json', 'utf8'));
           const report = payload.report ?? payload;
           const results = report.results ?? [];
+          const texts = results.map((result) => result.requirement?.text ?? '');
+          if (results.length !== 3) {
+            throw new Error(`Expected exactly three Acceptance requirements, got ${results.length}`);
+          }
+          const expectedSignals = [
+            'npm test` runs in CI',
+            'same Node version as the build job',
+            'added CI job appearing in checks'
+          ];
+          for (const signal of expectedSignals) {
+            if (!texts.some((text) => text.includes(signal))) {
+              throw new Error(`Missing acceptance requirement containing: ${signal}`);
+            }
+          }
+          const forbiddenEvidence = [
+            'package.json` — `"test": "vitest run"` script exists',
+            'grep for `npm test` / `vitest` across `.github/` finds none',
+            'no Node/vitest test job'
+          ];
+          for (const signal of forbiddenEvidence) {
+            if (texts.some((text) => text.includes(signal))) {
+              throw new Error(`Evidence metadata was incorrectly extracted as a requirement: ${signal}`);
+            }
+          }
           const req = Object.groupBy(results, (r) => r.status);
           console.log(`verdict=${report.verdict}`);
           console.log(`requirements=${results.length} proven=${req.PROVEN?.length ?? 0} failed=${req.FAILED?.length ?? 0} unproven=${req.UNPROVEN?.length ?? 0}`);
