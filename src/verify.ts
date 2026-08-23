@@ -9,9 +9,14 @@ import {
 import { GitHubClient } from "./github.js";
 import { discoverInstructionFiles } from "./instructions.js";
 import { resolveIssueNumber } from "./linked-issue.js";
+import {
+  QUANTIFIED_COUNT_UNPROVEN_REASON,
+  requiresQuantifiedArtifactCountEvidence
+} from "./quantitative-guard.js";
 import { extractRequirements } from "./requirements.js";
 import type {
   CheckRunSummary,
+  ClaimResult,
   Requirement,
   RequirementResult,
   RequiredStatusCheck,
@@ -66,6 +71,34 @@ function ciAssessmentToRequirementResult(
       ...(check.htmlUrl ? { url: check.htmlUrl } : {})
     }))
   };
+}
+
+function guardQuantifiedRequirement(result: RequirementResult): RequirementResult {
+  if (
+    result.status === "PROVEN"
+    && requiresQuantifiedArtifactCountEvidence(result.requirement.text)
+  ) {
+    return {
+      ...result,
+      status: "UNPROVEN",
+      reason: QUANTIFIED_COUNT_UNPROVEN_REASON
+    };
+  }
+  return result;
+}
+
+function guardQuantifiedClaim(result: ClaimResult): ClaimResult {
+  if (
+    result.status === "PROVEN"
+    && requiresQuantifiedArtifactCountEvidence(result.claim.text)
+  ) {
+    return {
+      ...result,
+      status: "UNPROVEN",
+      reason: QUANTIFIED_COUNT_UNPROVEN_REASON
+    };
+  }
+  return result;
 }
 
 function evaluateRequirement(
@@ -182,26 +215,28 @@ export async function verifyPullRequest(input: {
   const requirements = extractRequirements(issue.body ?? "");
   const claims = extractCompletionClaims(pull.body ?? "");
   const changedFiles = files.map((file) => file.filename);
-  const claimResults = buildClaimResults(claims, checks, changedFiles).map((result) => {
-    if (!isRequiredChecksSuccessStatement(result.claim.text)) return result;
+  const claimResults = buildClaimResults(claims, checks, changedFiles)
+    .map((result) => {
+      if (!isRequiredChecksSuccessStatement(result.claim.text)) return result;
 
-    const assessment = assessGenericCiSuccess(result.claim.text, checks, requiredCheckContexts);
-    if (!assessment) return result;
+      const assessment = assessGenericCiSuccess(result.claim.text, checks, requiredCheckContexts);
+      if (!assessment) return result;
 
-    return {
-      claim: result.claim,
-      status: assessment.status,
-      reason: assessment.reason,
-      evidence: assessment.matchedChecks.map((check) => ({
-        kind: "ci" as const,
-        summary: `${check.name}: ${check.conclusion ?? check.status}`,
-        ...(check.htmlUrl ? { url: check.htmlUrl } : {})
-      }))
-    };
-  });
-  const results = requirements.map((requirement) =>
-    evaluateRequirement(requirement, files, checks, requiredCheckContexts)
-  );
+      return {
+        claim: result.claim,
+        status: assessment.status,
+        reason: assessment.reason,
+        evidence: assessment.matchedChecks.map((check) => ({
+          kind: "ci" as const,
+          summary: `${check.name}: ${check.conclusion ?? check.status}`,
+          ...(check.htmlUrl ? { url: check.htmlUrl } : {})
+        }))
+      };
+    })
+    .map(guardQuantifiedClaim);
+  const results = requirements
+    .map((requirement) => evaluateRequirement(requirement, files, checks, requiredCheckContexts))
+    .map(guardQuantifiedRequirement);
 
   const verdict = results.some((result) => result.status === "FAILED")
     ? "FAILED"
