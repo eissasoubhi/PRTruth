@@ -60,6 +60,7 @@ function toolSpecificValidationMatchers(text: string): ScopeMatcher[] {
   if (/\bshfmt\b/i.test(text)) tools.push(matcher("shfmt", /\bshfmt\b/i));
   if (/\bhadolint\b/i.test(text)) tools.push(matcher("hadolint", /\bhadolint\b/i));
   if (/\bactionlint\b/i.test(text)) tools.push(matcher("actionlint", /\bactionlint\b/i));
+  if (/\bzizmor\b/i.test(text)) tools.push(matcher("zizmor", /\bzizmor\b/i));
   if (/\bgolangci[- ]lint\b/i.test(text)) tools.push(matcher("golangci-lint", /\bgolangci[- ]lint\b/i));
   if (/\bstaticcheck\b/i.test(text)) tools.push(matcher("staticcheck", /\bstaticcheck\b/i));
   if (/\bgocritic\b|\bgo-critic\b/i.test(text)) tools.push(matcher("gocritic", /\bgocritic\b|\bgo-critic\b/i));
