@@ -286,24 +286,40 @@ export class GitHubClient {
           )
         )
       ]);
-      const branchChecks = branchInfo.protection?.required_status_checks;
-      const legacyChecks = branchChecks?.checks?.map((check) => ({
-        context: check.context,
-        ...(positiveSourceId(check.app_id) !== undefined
-          ? { appId: positiveSourceId(check.app_id) }
-          : {})
-      })) ?? branchChecks?.contexts?.map((context) => ({ context })) ?? [];
-      const ruleChecks = rules
-        .filter((rule) => rule.type === "required_status_checks")
-        .flatMap((rule) => rule.parameters?.required_status_checks ?? [])
-        .map((check) => ({
-          context: check.context,
-          ...(positiveSourceId(check.integration_id) !== undefined
-            ? { appId: positiveSourceId(check.integration_id) }
-            : {})
-        }));
 
-      return dedupeRequiredChecks([...legacyChecks, ...ruleChecks]);
+      const requiredChecks: RequiredStatusCheck[] = [];
+      const classicStatusChecks = branchInfo.protection?.required_status_checks;
+      const classicChecks = classicStatusChecks?.checks ?? [];
+      const sourceAwareContexts = new Set<string>();
+
+      for (const check of classicChecks) {
+        const context = check.context.trim();
+        if (!context) continue;
+        const appId = positiveSourceId(check.app_id);
+        requiredChecks.push({ context, ...(appId !== undefined ? { appId } : {}) });
+        sourceAwareContexts.add(normalizeContext(context));
+      }
+
+      // Preserve distinct legacy contexts, but do not add a generic duplicate
+      // for a context already represented by source-aware `checks` metadata.
+      for (const contextValue of classicStatusChecks?.contexts ?? []) {
+        const context = contextValue.trim();
+        if (context && !sourceAwareContexts.has(normalizeContext(context))) {
+          requiredChecks.push({ context });
+        }
+      }
+
+      for (const rule of rules) {
+        if (rule.type !== "required_status_checks") continue;
+        for (const check of rule.parameters?.required_status_checks ?? []) {
+          const context = check.context.trim();
+          if (!context) continue;
+          const appId = positiveSourceId(check.integration_id);
+          requiredChecks.push({ context, ...(appId !== undefined ? { appId } : {}) });
+        }
+      }
+
+      return dedupeRequiredChecks(requiredChecks);
     } catch (error) {
       if (error instanceof GitHubApiError && (error.status === 403 || error.status === 404)) {
         return null;
@@ -312,14 +328,14 @@ export class GitHubClient {
     }
   }
 
-  async getRepositoryContents(repository: string, path = ""): Promise<GitHubContentResponse[]> {
-    const encodedPath = path
-      .split("/")
-      .map((part) => encodeURIComponent(part))
-      .join("/");
-    const response = await this.request<GitHubContentResponse[] | GitHubContentResponse>(
-      `/repos/${repository}/contents/${encodedPath}`
-    );
-    return Array.isArray(response) ? response : [response];
+  async getContent(repository: string, path: string): Promise<GitHubContentResponse | null> {
+    return this.requestOptional(`/repos/${repository}/contents/${path}`);
   }
 }
+
+export type {
+  GitHubIssueResponse,
+  GitHubPullResponse,
+  GitHubPullFileResponse,
+  GitHubCheckRunResponse
+};
