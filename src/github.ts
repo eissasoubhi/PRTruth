@@ -55,6 +55,7 @@ interface GitHubWorkflowJobStepResponse {
 interface GitHubWorkflowJobResponse {
   name: string;
   html_url?: string;
+  labels?: string[];
   steps?: GitHubWorkflowJobStepResponse[] | null;
 }
 
@@ -159,6 +160,11 @@ function dedupeRequiredChecks(checks: RequiredStatusCheck[]): RequiredStatusChec
   });
 }
 
+function workflowJobEvidenceName(job: GitHubWorkflowJobResponse): string {
+  const labels = [...new Set((job.labels ?? []).map((label) => label.trim()).filter(Boolean))];
+  return labels.length > 0 ? `${job.name} [${labels.join(", ")}]` : job.name;
+}
+
 export class GitHubClient {
   constructor(private readonly token = process.env.GITHUB_TOKEN) {}
 
@@ -251,14 +257,15 @@ export class GitHubClient {
       );
 
       return jobsByRun.flatMap((jobs) =>
-        jobs.flatMap((job) =>
-          (job.steps ?? []).map((step) => ({
-            name: `${job.name} / ${step.name}`,
+        jobs.flatMap((job) => {
+          const jobName = workflowJobEvidenceName(job);
+          return (job.steps ?? []).map((step) => ({
+            name: `${jobName} / ${step.name}`,
             status: step.status,
             conclusion: step.conclusion,
             ...(job.html_url ? { html_url: job.html_url } : {})
-          }))
-        )
+          }));
+        })
       );
     } catch (error) {
       if (error instanceof GitHubApiError && (error.status === 403 || error.status === 404)) {

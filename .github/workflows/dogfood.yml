@@ -147,16 +147,15 @@ jobs:
           if (!validationClaim) {
             throw new Error('V0.2: expected the prose CI validation claim');
           }
-          if (validationClaim.status !== 'UNPROVEN') {
+          if (validationClaim.status !== 'PROVEN') {
             throw new Error(
-              `V0.2: Linux ARM64 validation must stay UNPROVEN when check names omit the claimed platform, got ${validationClaim.status}`
+              `V0.2: structured Linux ARM64 runner labels must prove the scoped validation claim, got ${validationClaim.status}: ${validationClaim.reason}`
             );
           }
-          if (!validationClaim.reason?.includes('linux, arm64')) {
-            throw new Error(`V0.2: expected missing Linux ARM64 scope in reason, got ${validationClaim.reason}`);
-          }
-          if (validationClaim.evidence?.some((item) => item.kind === 'ci')) {
-            throw new Error('V0.2: unscoped green CI must not be cited as Linux ARM64 proof');
+          if (!validationClaim.evidence?.some((item) =>
+            item.kind === 'ci' && item.summary.includes('Linux') && item.summary.includes('ARM64')
+          )) {
+            throw new Error('V0.2: expected scoped CI evidence to retain Linux and ARM64 runner labels');
           }
 
           const specificCoverageClaim = (v03.claimResults ?? []).find((result) =>
@@ -264,6 +263,7 @@ jobs:
 
           console.log(`V0.2 inferred issue: #${v02.issueNumber}`);
           console.log(`V0.2 verdict: ${v02.verdict}`);
+          console.log(`V0.2 Linux ARM64 validation: ${validationClaim.status}`);
           console.log(`V0.3 verdict: ${v03.verdict}`);
           console.log(`JobPilot inferred issue: #${jobpilot.issueNumber}`);
           console.log(`JobPilot retry candidate: ${retryRequirement.evidence[0]?.summary ?? 'missing'}`);

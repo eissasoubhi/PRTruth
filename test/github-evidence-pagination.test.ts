@@ -135,4 +135,41 @@ describe("GitHub evidence pagination", () => {
       String(input).includes("/actions/runs/501/jobs?per_page=100&page=2")
     )).toBe(true);
   });
+
+  it("includes structured workflow runner labels in each step evidence name", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+
+      if (url.includes("/actions/runs?head_sha=") && url.includes("&page=1")) {
+        return jsonResponse({ workflow_runs: [{ id: 601, workflow_id: 12 }] });
+      }
+
+      if (url.includes("/actions/runs/601/jobs?") && url.includes("&page=1")) {
+        return jsonResponse({
+          jobs: [
+            {
+              name: "quality",
+              labels: ["self-hosted", "Linux", "ARM64", "self-hosted"],
+              html_url: "https://github.com/acme/shop/actions/runs/601/job/1",
+              steps: [
+                { name: "Run pnpm install", status: "completed", conclusion: "success" },
+                { name: "Run pnpm test", status: "completed", conclusion: "success" }
+              ]
+            }
+          ]
+        });
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    const client = new GitHubClient("token");
+    const checks = await client.getWorkflowStepChecks("acme/shop", "head-sha");
+
+    expect(checks.map((check) => check.name)).toEqual([
+      "quality [self-hosted, Linux, ARM64] / Run pnpm install",
+      "quality [self-hosted, Linux, ARM64] / Run pnpm test"
+    ]);
+    expect(checks.every((check) => check.html_url?.includes("/actions/runs/601/job/1"))).toBe(true);
+  });
 });
