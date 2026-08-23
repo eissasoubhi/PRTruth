@@ -1,0 +1,86 @@
+name: Manual oracle batch 6
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-6.yml"
+      - "src/**"
+      - "test/**"
+      - "docs/manual-oracle-batch-6.md"
+
+permissions:
+  contents: read
+  actions: read
+  checks: read
+
+jobs:
+  dotnet-oracle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+      GITHUB_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout PRTruth
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build current PRTruth source
+        run: pnpm build
+
+      - name: Run ASP.NET Core cache-hardening oracle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p oracle-results
+
+          node dist/cli.js verify \
+            --repo dotnet/aspnetcore \
+            --issue 67907 \
+            --pr 68517 \
+            --policy report-only \
+            --format json \
+            --output oracle-results/aspnetcore-67907-68517.json
+
+      - name: Print compact matrix
+        if: always()
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readdirSync, readFileSync } from 'node:fs';
+          for (const file of readdirSync('oracle-results').sort()) {
+            const payload = JSON.parse(readFileSync(`oracle-results/${file}`, 'utf8'));
+            const report = payload.report ?? payload;
+            const counts = { PROVEN: 0, FAILED: 0, UNPROVEN: 0 };
+            for (const result of report.results ?? []) counts[result.status] = (counts[result.status] ?? 0) + 1;
+            console.log(`${file}: verdict=${report.verdict} requirements=${counts.PROVEN}/${counts.FAILED}/${counts.UNPROVEN} claims=${(report.claimResults ?? []).length}`);
+            for (const result of report.results ?? []) console.log(`  ${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing requirement>'}`);
+          }
+          NODE
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: prtruth-manual-oracle-batch-6
+          path: oracle-results/*.json
+          if-no-files-found: warn
