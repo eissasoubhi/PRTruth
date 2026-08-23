@@ -34,4 +34,80 @@ Something else.
       "Limit exports to 10,000 rows"
     ]);
   });
+
+  it("does not mix contributor checklists into explicit acceptance criteria", () => {
+    const result = extractRequirements(`
+## Scope
+- [ ] Resources restrict anonymous reads to published data
+- [ ] Comments restrict anonymous reads to published resources
+
+## Acceptance Criteria
+- [ ] Anonymous users never receive drafts
+- [ ] Owners can read their own drafts
+- [ ] Admins can read everything
+- [ ] Tests cover the access matrix
+
+## Contributor Checklist
+- [ ] Read CONTRIBUTING.md
+- [ ] Discuss the approach before starting
+- [ ] Keep changes focused
+`);
+
+    expect(result.map((item) => item.text)).toEqual([
+      "Anonymous users never receive drafts",
+      "Owners can read their own drafts",
+      "Admins can read everything",
+      "Tests cover the access matrix"
+    ]);
+  });
+
+  it("prefers expected behavior prose over reproduction steps", () => {
+    const result = extractRequirements(`
+## To Reproduce
+1. Create a restricted role.
+2. Start a whole-library export.
+3. Observe that the operation is accepted.
+
+## Expected behavior
+Whole-library transfers require unrestricted access for every content verb implied by the operation. Configuration-backup discovery requires the dedicated backup permission.
+
+## Additional context
+The fix should exercise read, write, and delete restrictions independently.
+`);
+
+    expect(result.map((item) => item.text)).toEqual([
+      "Whole-library transfers require unrestricted access for every content verb implied by the operation. Configuration-backup discovery requires the dedicated backup permission."
+    ]);
+  });
+
+  it("keeps simple issue checklists when there is no acceptance heading", () => {
+    const result = extractRequirements(`
+## Tasks
+- [ ] Add the endpoint
+- [x] Add the migration
+
+## Testing instructions
+- [ ] Run the full suite locally
+`);
+
+    expect(result.map((item) => item.text)).toEqual([
+      "Add the endpoint",
+      "Add the migration"
+    ]);
+    expect(result[1]?.checked).toBe(true);
+  });
+
+  it("does not treat pure reproduction steps as requirements", () => {
+    const result = extractRequirements(`
+## To Reproduce
+1. Open the dashboard.
+2. Click the export button.
+3. Observe the crash.
+
+## Screenshots
+- See attached screenshot
+`);
+
+    expect(result).toEqual([]);
+  });
 });
