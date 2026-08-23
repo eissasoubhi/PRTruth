@@ -1,0 +1,84 @@
+name: Manual oracle batch 10
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/manual-oracle-batch-10.yml'
+      - 'src/**'
+      - 'tests/**'
+      - 'docs/manual-oracle-batch-10.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  actions: read
+  checks: read
+
+jobs:
+  public-oracle:
+    runs-on: ubuntu-24.04
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: 'false'
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout PRTruth
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+      - name: Build current PRTruth source
+        run: pnpm build
+      - name: Run Rust smart-contract oracle
+        run: |
+          mkdir -p oracle-results
+          node dist/cli.js verify \
+            --repo HubDApp/Dongle-Smartcontract \
+            --issue 177 \
+            --pr 569 \
+            --policy report-only \
+            --format json \
+            --output oracle-results/dongle-177-569.json
+      - name: Assert exact acceptance set and print matrix
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync('oracle-results/dongle-177-569.json', 'utf8'));
+          const report = payload.report ?? payload;
+          const results = report.results ?? [];
+          if (results.length !== 4) throw new Error(`Expected 4 acceptance requirements, got ${results.length}`);
+          const expected = [
+            'Any authenticated user can report a project with a reason CID',
+            'Duplicate reports from the same user are prevented',
+            'Admins can list or count reports for a project',
+            'Tests cover reporting and duplicate prevention'
+          ];
+          const texts = results.map((r) => r.requirement?.text ?? '');
+          for (const signal of expected) {
+            if (!texts.some((text) => text.includes(signal))) throw new Error(`Missing requirement: ${signal}`);
+          }
+          const req = Object.groupBy(results, (r) => r.status);
+          const claims = Object.groupBy(report.claimResults ?? [], (r) => r.status);
+          console.log(`verdict=${report.verdict}`);
+          console.log(`requirements=${results.length} proven=${req.PROVEN?.length ?? 0} failed=${req.FAILED?.length ?? 0} unproven=${req.UNPROVEN?.length ?? 0}`);
+          console.log(`claims proven=${claims.PROVEN?.length ?? 0} failed=${claims.FAILED?.length ?? 0} unproven=${claims.UNPROVEN?.length ?? 0}`);
+          for (const result of results) console.log(`${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing>'}`);
+          NODE
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: prtruth-manual-oracle-batch-10
+          path: oracle-results/*.json
