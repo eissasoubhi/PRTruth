@@ -2,6 +2,7 @@ import type { Requirement } from "./types.js";
 
 const ATX_HEADING = /^(#{1,6})\s+(.+?)\s*#*\s*$/;
 const BOLD_HEADING = /^\s*\*\*(.+?)\*\*\s*$/;
+const PLAIN_SECTION_LABEL = /^\s*([^#*].*?)\s*[:：]\s*$/;
 const CHECKBOX = /^\s*[-*+]\s+\[([ xX])\]\s+(.+)$/;
 const LIST_ITEM = /^\s*(?:[-*+]|\d+[.)])\s+(.+)$/;
 const LABELED_CRITERION = /^\s*(?:AC|REQ|CRITERION)[-_ ]?\d+(?:\s*\[[^\]]+\])?\s*[:.)-]\s*(.*)$/i;
@@ -11,7 +12,7 @@ const CHANGE_SECTION = /^(?:recommended change|proposed change)(?:\s*\([^)]*\))?
 const EXCLUDED_SECTION = /^(?:contributor checklist|checklist|initial checks?|prerequisites?|affected components?|evidence|build scans?|issue reasons?|out of scope|to reproduce|steps? to reproduce|reproduction(?: steps?)?|how (?:has this been )?tested|testing instructions?|references?|technical notes?|screenshots?|additional notes?)$/i;
 
 type MarkdownHeading = {
-  kind: "atx" | "bold";
+  kind: "atx" | "bold" | "plain";
   level: number;
   text: string;
 };
@@ -22,6 +23,15 @@ function normalizeText(value: string): string {
 
 function normalizeHeading(value: string): string {
   return normalizeText(value).replace(/[:：]\s*$/, "");
+}
+
+function isKnownSectionHeading(value: string): boolean {
+  return (
+    ACCEPTANCE_SECTION.test(value) ||
+    EXPECTED_SECTION.test(value) ||
+    CHANGE_SECTION.test(value) ||
+    EXCLUDED_SECTION.test(value)
+  );
 }
 
 function stripFencedCode(lines: string[]): string[] {
@@ -64,11 +74,23 @@ function parseHeading(line: string): MarkdownHeading | null {
     };
   }
 
+  const plain = line.match(PLAIN_SECTION_LABEL);
+  if (plain) {
+    const text = normalizeHeading(plain[1] ?? "");
+    if (isKnownSectionHeading(text)) {
+      return {
+        kind: "plain",
+        level: 7,
+        text
+      };
+    }
+  }
+
   return null;
 }
 
 function closesSection(section: MarkdownHeading, next: MarkdownHeading): boolean {
-  if (section.kind === "bold") return true;
+  if (section.kind === "bold" || section.kind === "plain") return true;
   return next.kind === "atx" && next.level <= section.level;
 }
 
@@ -155,9 +177,6 @@ function extractListSections(
       continue;
     }
 
-    // Markdown list items commonly wrap long criteria onto indented lines.
-    // Preserve only indented continuation text so an unrelated paragraph in
-    // the same section cannot silently become part of the requirement.
     if (/^\s{2,}\S/.test(line)) {
       current.push(line.trim());
       continue;
@@ -238,7 +257,7 @@ function extractNonBoilerplateChecklist(lines: string[]): Requirement[] {
   for (const line of lines) {
     const heading = parseHeading(line);
     if (heading) {
-      if (excludedSection && (closesSection(excludedSection, heading) || heading.kind === "bold")) {
+      if (excludedSection && (closesSection(excludedSection, heading) || heading.kind === "bold" || heading.kind === "plain")) {
         excludedSection = null;
       }
       if (EXCLUDED_SECTION.test(heading.text)) excludedSection = heading;
@@ -279,7 +298,7 @@ function extractExpectedBehavior(lines: string[]): Requirement[] {
   for (const line of lines) {
     const heading = parseHeading(line);
     if (heading) {
-      if (section && (closesSection(section, heading) || section.kind === "bold")) {
+      if (section && (closesSection(section, heading) || section.kind === "bold" || section.kind === "plain")) {
         flushParagraph();
         section = null;
       }
@@ -325,7 +344,7 @@ function extractFallbackLists(lines: string[]): Requirement[] {
   for (const line of lines) {
     const heading = parseHeading(line);
     if (heading) {
-      if (excludedSection && (closesSection(excludedSection, heading) || heading.kind === "bold")) {
+      if (excludedSection && (closesSection(excludedSection, heading) || heading.kind === "bold" || heading.kind === "plain")) {
         excludedSection = null;
       }
       if (EXCLUDED_SECTION.test(heading.text)) excludedSection = heading;
