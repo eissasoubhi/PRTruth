@@ -36,11 +36,18 @@ uv run pytest tests/test_tokens.py \
 
 This is strong execution evidence for the focused regression suite, but it is not by itself semantic proof of every criterion.
 
-## Expected PRTruth comparison
+## PRTruth comparison
 
-The safe baseline is that PRTruth extracts exactly four requirements and does not manufacture proof from a generic green workflow or from the workflow's separate `|| true` drift-reporting step.
+The real public rerun on current PRTruth source extracts exactly four requirements and returns:
 
-If PRTruth leaves one or more requirements `UNPROVEN`, classify that as a missing deterministic source/test-to-requirement adapter unless the report reveals a concrete verifier defect. Do not add lexical matching merely to reach the human 4/4 verdict.
+- overall verdict: `NOT_PROVEN`;
+- `0 PROVEN`;
+- `0 FAILED`;
+- `4 UNPROVEN`.
+
+All four disagreements with the human oracle are classified as **missing deterministic source/test-to-requirement adapters**, not extraction defects and not reasons to add lexical heuristics. PRTruth sees the right requirements but does not yet have a sound way to connect the exact implementation/test semantics to each one.
+
+This conservative result is preferable to manufacturing proof from the generic green workflow. In particular, the workflow's separate `|| true` drift-reporting command must not be projected as strict successful execution evidence merely because its enclosing step/job is green.
 
 ## Safety invariant
 
