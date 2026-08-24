@@ -53,4 +53,42 @@ jobs:
       }
     ]);
   });
+
+  it("rejects unconditional success tails that can hide an earlier command failure", () => {
+    expect(successfulWorkflowCommandProvenance([
+      {
+        name: "Semicolon true",
+        run: "npm test; true",
+        workflowPath: ".github/workflows/ci.yml",
+        status: "completed",
+        conclusion: "success"
+      },
+      {
+        name: "Explicit zero exit",
+        run: "npm test\nexit 0",
+        workflowPath: ".github/workflows/ci.yml",
+        status: "completed",
+        conclusion: "success"
+      },
+      {
+        name: "Colon success",
+        run: "npm test\n:",
+        workflowPath: ".github/workflows/ci.yml",
+        status: "completed",
+        conclusion: "success"
+      }
+    ])).toEqual([]);
+  });
+
+  it("rejects negated diagnostic conditionals that turn command failure into a green step", () => {
+    expect(successfulWorkflowCommandProvenance([
+      {
+        name: "Diagnostic test",
+        run: "if ! npm test; then\n  echo 'tests failed'\nfi",
+        workflowPath: ".github/workflows/ci.yml",
+        status: "completed",
+        conclusion: "success"
+      }
+    ])).toEqual([]);
+  });
 });
