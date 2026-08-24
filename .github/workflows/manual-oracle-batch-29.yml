@@ -62,6 +62,12 @@ jobs:
           console.log(`requirements=${results.length}`);
           for (const result of results) {
             console.log(`${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing>'}`);
+            console.log(JSON.stringify({
+              reason: result.reason,
+              evidence: result.evidence,
+              evidenceRefs: result.evidenceRefs,
+              matchedEvidence: result.matchedEvidence,
+            }, null, 2));
           }
 
           if (results.length !== 2) {
@@ -83,7 +89,7 @@ jobs:
           // jsdom component suite that checks event handlers, script elements,
           // javascript: URLs, current SVG/icon-less rendering, active styling,
           // labels, and onselect forwarding. The exact PR head also has a green
-          // Unit Tests job. PRTruth may remain UNPROVEN until it can soundly
+          // Unit Tests job. PRTruth may remain conservative until it can soundly
           // associate these source/test facts with individual requirements.
           if (report.verdict === 'PROVEN' && results.some((r) => r.status !== 'PROVEN')) {
             throw new Error('A global PROVEN verdict must not hide non-PROVEN requirement rows');
