@@ -14,7 +14,7 @@ jobs:
         continue-on-error: true
         run: npm test
       - name: Dynamic failure policy
-        continue-on-error: ${{ matrix.experimental }}
+        continue-on-error: \${{ matrix.experimental }}
         run: npm run lint
       - name: Strict validation
         continue-on-error: false
