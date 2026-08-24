@@ -1,0 +1,100 @@
+name: Manual oracle batch 27
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/manual-oracle-batch-27.yml'
+      - 'src/**'
+      - 'test/**'
+      - 'docs/manual-oracle-batch-27.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  actions: read
+  checks: read
+
+jobs:
+  public-oracle:
+    runs-on: ubuntu-24.04
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: 'false'
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout PRTruth
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+      - name: Build current PRTruth source
+        run: pnpm build
+      - name: Run Windows ETW error-propagation oracle
+        run: |
+          mkdir -p oracle-results
+          node dist/cli.js verify \
+            --repo Karib0u/rustinel \
+            --issue 256 \
+            --pr 269 \
+            --policy report-only \
+            --format json \
+            --output oracle-results/rustinel-256-269.json
+      - name: Assert conservative source-and-platform behavior
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync('oracle-results/rustinel-256-269.json', 'utf8'));
+          const report = payload.report ?? payload;
+          const results = report.results ?? [];
+          console.log(`verdict=${report.verdict}`);
+          console.log(`requirements=${results.length}`);
+          for (const result of results) {
+            console.log(`${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing>'}`);
+          }
+
+          if (results.length !== 4) {
+            throw new Error(`Expected exactly 4 acceptance criteria from rustinel issue #256, observed ${results.length}`);
+          }
+
+          const expected = [
+            /trace\.process\(\).*propagates as.*Err/i,
+            /run.*capture.*underlying ETW error/i,
+            /Shutdown-initiated trace ends.*normal.*non-error/i,
+            /transient start failure.*not silently.*clean session end/i,
+          ];
+          for (const pattern of expected) {
+            if (!results.some((r) => pattern.test(r.requirement?.text ?? ''))) {
+              throw new Error(`Missing expected acceptance criterion: ${pattern}`);
+            }
+          }
+
+          // Independent oracle: all four criteria are factually supported by the
+          // exact candidate source. The sensor now returns Err for process()
+          // failures outside shutdown; run and capture surface the carried error;
+          // shutdown remains Ok; and an unexpected running failure cannot take
+          // the clean-session path. Exact-head GitHub CI also executes cargo test
+          // and clippy on Windows successfully. PRTruth may remain conservative
+          // until it can deterministically associate these source semantics and
+          // platform-scoped execution facts with each requirement.
+          if (report.verdict === 'PROVEN' && results.some((r) => r.status !== 'PROVEN')) {
+            throw new Error('A global PROVEN verdict must not hide non-PROVEN requirement rows');
+          }
+          NODE
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: prtruth-manual-oracle-batch-27
+          path: oracle-results/*.json
