@@ -11,6 +11,10 @@ import {
   type PatchFile
 } from "./diff-evidence.js";
 import { GitHubClient } from "./github.js";
+import {
+  PRE_FIX_FAILURE_UNPROVEN_REASON,
+  requiresPreFixFailureEvidence
+} from "./historical-evidence.js";
 import { discoverInstructionFiles } from "./instructions.js";
 import { resolveIssueNumber } from "./linked-issue.js";
 import {
@@ -113,6 +117,19 @@ function evaluateRequirement(
 ): RequirementResult {
   const category = checkCategory(requirement.text);
   if (category) {
+    // A current-head green test can prove that a test passes now, but cannot
+    // prove a historical red-first clause such as "failing before the fix".
+    // Keep the whole conjunctive requirement UNPROVEN until before-state
+    // execution evidence is represented explicitly.
+    if (requiresPreFixFailureEvidence(requirement.text)) {
+      return {
+        requirement,
+        status: "UNPROVEN",
+        reason: PRE_FIX_FAILURE_UNPROVEN_REASON,
+        evidence: []
+      };
+    }
+
     // Issue acceptance criteria and PR completion claims must use the same
     // scoped CI semantics. The old requirement-only path matched merely by
     // category name, which could let a generic green test job prove a stronger
