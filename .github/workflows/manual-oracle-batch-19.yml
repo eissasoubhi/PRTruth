@@ -1,0 +1,93 @@
+name: Manual oracle batch 19
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/manual-oracle-batch-19.yml'
+      - 'src/**'
+      - 'test/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  actions: read
+  checks: read
+
+jobs:
+  public-oracle:
+    runs-on: ubuntu-24.04
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: 'false'
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout PRTruth
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+      - name: Build current PRTruth source
+        run: pnpm build
+      - name: Run quantitative improvement oracle
+        run: |
+          mkdir -p oracle-results
+          node dist/cli.js verify \
+            --repo rjwalters/vibesql \
+            --issue 6508 \
+            --pr 6514 \
+            --policy report-only \
+            --format json \
+            --output oracle-results/vibesql-6508-6514.json
+      - name: Assert quantitative evidence ceiling
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync('oracle-results/vibesql-6508-6514.json', 'utf8'));
+          const report = payload.report ?? payload;
+          const results = report.results ?? [];
+          console.log(`verdict=${report.verdict}`);
+          console.log(`requirements=${results.length}`);
+          for (const result of results) console.log(`${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing>'}`);
+
+          if (results.length !== 4) {
+            throw new Error(`Expected exactly 4 authoritative acceptance criteria, observed ${results.length}`);
+          }
+
+          const improvement = results.find((result) =>
+            /e_dropview\.test.*improves.*31\/48.*64\.6%/i.test(result.requirement?.text ?? '')
+          );
+          if (!improvement) {
+            throw new Error('Quantitative e_dropview improvement criterion was not extracted');
+          }
+          if (improvement.status === 'PROVEN') {
+            throw new Error('A globally green CI run must not prove an exact numeric test-suite improvement unless that quantity is observable in evidence');
+          }
+
+          // Independent oracle: upstream PR #6514 documents a manual before/after
+          // measurement (32/48 -> 35/48) and focused regression tests, while its exact
+          // GitHub head has a successful CI workflow. PRTruth can use that CI as evidence
+          // for checks it actually exposes, but it must not infer the exact numeric
+          // e_dropview improvement from a generic green workflow when the quantity is not
+          // present in structured observable evidence.
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Issue must not become globally PROVEN while the quantitative improvement criterion lacks observable numeric evidence');
+          }
+          NODE
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: prtruth-manual-oracle-batch-19
+          path: oracle-results/*.json
