@@ -132,11 +132,21 @@ function listRequirement(
 function extractInlineAcceptance(lines: string[]): Requirement[] {
   const requirements: Requirement[] = [];
 
-  for (const line of lines) {
-    const match = line.match(INLINE_ACCEPTANCE_LABEL);
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index]?.match(INLINE_ACCEPTANCE_LABEL);
     if (!match) continue;
 
-    const body = normalizeText(match[2] ?? "");
+    const paragraph = [match[2] ?? ""];
+    let cursor = index + 1;
+    while (cursor < lines.length) {
+      const next = lines[cursor] ?? "";
+      if (!next.trim() || parseHeading(next) || INLINE_ACCEPTANCE_LABEL.test(next)) break;
+      paragraph.push(next.trim());
+      cursor += 1;
+    }
+    index = cursor - 1;
+
+    const body = normalizeText(paragraph.join(" "));
     if (!body) continue;
 
     const clauses = body
@@ -144,7 +154,6 @@ function extractInlineAcceptance(lines: string[]): Requirement[] {
       .map((clause) => normalizeText(clause))
       .filter((clause) => clause.length >= 8);
 
-    if (clauses.length === 0) continue;
     for (const clause of clauses) {
       requirements.push({
         id: `REQ-${requirements.length + 1}`,
