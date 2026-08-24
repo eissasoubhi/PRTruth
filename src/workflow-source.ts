@@ -69,6 +69,7 @@ function hasExplicitFailureSuppression(run: string): boolean {
 
   return (
     /\|\|/.test(normalized) ||
+    /(^|[^|])\|(?!\|)/.test(normalized) ||
     /(^|\n)\s*set\s+\+e(?:\s|$)/i.test(normalized) ||
     /(?:^|[;\n])\s*(?:true|:|exit\s+0)\s*(?:$|[;\n])/i.test(normalized) ||
     /(^|\n)\s*(?:if|while|until)\b[\s\S]*?\b(?:then|do)\b[\s\S]*?\b(?:fi|done)\b\s*(?:$|\n)/im.test(normalized) ||
@@ -200,11 +201,12 @@ export function bindExecutedWorkflowStepsToSource(
  * that GitHub reports as both `completed` and `success` survive. Queued,
  * in-progress, skipped, neutral, cancelled, timed-out, action-required, and
  * failed steps are omitted rather than interpreted as successful execution.
- * Commands with explicit shell-level failure suppression such as `||`,
- * `set +e`, unconditional success tails (`true`, `:`, `exit 0`), or shell
- * control-flow blocks (`if`, `while`, `until`, `case`) are also omitted because
- * a green step does not establish that every command evaluated inside those
- * constructs succeeded.
+ * Commands with explicit shell-level failure suppression such as `||`, plain
+ * shell pipelines, `set +e`, unconditional success tails (`true`, `:`,
+ * `exit 0`), or shell control-flow blocks (`if`, `while`, `until`, `case`) are
+ * also omitted. A green step does not establish that an earlier pipeline stage
+ * succeeded because pipe failure propagation depends on shell invocation and
+ * `pipefail` semantics that are not yet modeled here.
  *
  * This helper is still provenance only. Feeding these commands into verdict
  * evaluation remains a separate change so command semantics can be reviewed
