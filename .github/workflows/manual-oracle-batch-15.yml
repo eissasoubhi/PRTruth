@@ -1,0 +1,97 @@
+name: Manual oracle batch 15
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/manual-oracle-batch-15.yml'
+      - 'src/**'
+      - 'test/**'
+      - 'docs/manual-oracle-batch-15.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  actions: read
+  checks: read
+
+jobs:
+  public-oracle:
+    runs-on: ubuntu-24.04
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: 'false'
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout PRTruth
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+      - name: Build current PRTruth source
+        run: pnpm build
+      - name: Run runtime live-proof oracle
+        run: |
+          mkdir -p oracle-results
+          node dist/cli.js verify \
+            --repo openclaw/openclaw \
+            --issue 119682 \
+            --pr 128485 \
+            --policy report-only \
+            --format json \
+            --output oracle-results/openclaw-119682-128485.json
+      - name: Assert runtime evidence boundary and print verdict
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync('oracle-results/openclaw-119682-128485.json', 'utf8'));
+          const report = payload.report ?? payload;
+          const results = report.results ?? [];
+          const byStatus = Object.groupBy(results, (r) => r.status);
+          console.log(`verdict=${report.verdict}`);
+          console.log(`requirements=${results.length} proven=${byStatus.PROVEN?.length ?? 0} failed=${byStatus.FAILED?.length ?? 0} unproven=${byStatus.UNPROVEN?.length ?? 0}`);
+          for (const result of results) console.log(`${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing>'}`);
+
+          if (results.length !== 4) throw new Error(`Expected 4 authoritative acceptance criteria, got ${results.length}`);
+          const texts = results.map((r) => r.requirement?.text ?? '');
+          const expectedSignals = [
+            'later turn',
+            '>10-minute build',
+            'gateway restart',
+            'operator-configurable'
+          ];
+          for (const signal of expectedSignals) {
+            if (!texts.some((text) => text.includes(signal))) throw new Error(`Missing requirement signal: ${signal}`);
+          }
+
+          // Independent oracle: the merged PR explicitly says Docker/live proof was skipped,
+          // restart continuity is intentionally not implemented, and restart requires redispatch.
+          // Broad green CI and large focused test counts must never turn the literal original
+          // runtime/restart acceptance criteria into a globally PROVEN report.
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Runtime/live acceptance criteria must not be globally PROVEN from focused CI when live/restart proof was explicitly skipped');
+          }
+
+          const restart = results.find((r) => (r.requirement?.text ?? '').toLowerCase().includes('gateway restart'));
+          if (!restart) throw new Error('Missing gateway-restart acceptance criterion');
+          if (restart.status === 'PROVEN') {
+            throw new Error('Gateway-restart criterion cannot be PROVEN: the PR explicitly requires redispatch after restart');
+          }
+          NODE
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: prtruth-manual-oracle-batch-15
+          path: oracle-results/*.json
