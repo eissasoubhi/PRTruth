@@ -131,7 +131,7 @@ function removedPatchLines(file: PatchFile): PatchLine[] {
 }
 
 function hasDeletionIntent(statement: string): boolean {
-  return /\b(?:remove(?:s|d)?|delet(?:e|es|ed|ion)|drop(?:s|ped)?|eliminat(?:e|es|ed|ion)|dead|obsolete|unused|no longer)\b/i.test(statement);
+  return /\b(?:remove(?:s|d|ing)?|delet(?:e|es|ed|ing|ion)|drop(?:s|ped|ping)?|eliminat(?:e|es|ed|ing|ion)|no longer (?:use|uses|used|needed|present|exists?))\b/i.test(statement);
 }
 
 function scoreLine(statementTerms: Set<string>, line: PatchLine): number {
