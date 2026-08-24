@@ -11,6 +11,10 @@ import {
   type PatchFile
 } from "./diff-evidence.js";
 import { GitHubClient } from "./github.js";
+import {
+  PRE_FIX_FAILURE_UNPROVEN_REASON,
+  requiresPreFixFailureEvidence
+} from "./historical-evidence.js";
 import { discoverInstructionFiles } from "./instructions.js";
 import { resolveIssueNumber } from "./linked-issue.js";
 import {
@@ -77,6 +81,34 @@ function ciAssessmentToRequirementResult(
   };
 }
 
+function guardHistoricalRequirement(result: RequirementResult): RequirementResult {
+  if (
+    result.status === "PROVEN"
+    && requiresPreFixFailureEvidence(result.requirement.text)
+  ) {
+    return {
+      ...result,
+      status: "UNPROVEN",
+      reason: PRE_FIX_FAILURE_UNPROVEN_REASON
+    };
+  }
+  return result;
+}
+
+function guardHistoricalClaim(result: ClaimResult): ClaimResult {
+  if (
+    result.status === "PROVEN"
+    && requiresPreFixFailureEvidence(result.claim.text)
+  ) {
+    return {
+      ...result,
+      status: "UNPROVEN",
+      reason: PRE_FIX_FAILURE_UNPROVEN_REASON
+    };
+  }
+  return result;
+}
+
 function guardQuantifiedRequirement(result: RequirementResult): RequirementResult {
   if (
     result.status === "PROVEN"
@@ -117,15 +149,17 @@ function evaluateRequirement(
     // scoped CI semantics. The old requirement-only path matched merely by
     // category name, which could let a generic green test job prove a stronger
     // requirement such as "Tests pass on Node 22 and Node 24".
-    return ciAssessmentToRequirementResult(
+    // Historical red-first clauses are guarded after assessment so an observed
+    // current-head failure still remains FAILED rather than being hidden.
+    return guardHistoricalRequirement(ciAssessmentToRequirementResult(
       requirement,
       assessCompletionClaim(requirement.text, checks)
-    );
+    ));
   }
 
   const overallCi = assessGenericCiSuccess(requirement.text, checks, requiredCheckContexts);
   if (overallCi) {
-    return {
+    return guardHistoricalRequirement({
       requirement,
       status: overallCi.status,
       reason: overallCi.reason,
@@ -134,7 +168,7 @@ function evaluateRequirement(
         summary: `${check.name}: ${check.conclusion ?? check.status}`,
         ...(check.htmlUrl ? { url: check.htmlUrl } : {})
       }))
-    };
+    });
   }
 
   const quantitativeMismatch = findQuantitativePatchMismatchEvidence(requirement.text, files);
@@ -250,9 +284,11 @@ export async function verifyPullRequest(input: {
         }))
       };
     })
+    .map(guardHistoricalClaim)
     .map(guardQuantifiedClaim);
   const results = requirements
     .map((requirement) => evaluateRequirement(requirement, files, checks, requiredCheckContexts))
+    .map(guardHistoricalRequirement)
     .map(guardQuantifiedRequirement);
 
   const verdict = results.some((result) => result.status === "FAILED")

@@ -1,0 +1,96 @@
+name: Manual oracle batch 29
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/manual-oracle-batch-29.yml'
+      - 'src/**'
+      - 'test/**'
+      - 'docs/manual-oracle-batch-29.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  actions: read
+  checks: read
+
+jobs:
+  public-oracle:
+    runs-on: ubuntu-24.04
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: 'false'
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout PRTruth
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+      - name: Build current PRTruth source
+        run: pnpm build
+      - name: Run Svelte XSS hardening oracle
+        run: |
+          mkdir -p oracle-results
+          node dist/cli.js verify \
+            --repo mydcc/cachy-app \
+            --issue 2201 \
+            --pr 2279 \
+            --policy report-only \
+            --format json \
+            --output oracle-results/cachy-2201-2279.json
+      - name: Assert conservative requirement extraction
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync('oracle-results/cachy-2201-2279.json', 'utf8'));
+          const report = payload.report ?? payload;
+          const results = report.results ?? [];
+          console.log(`verdict=${report.verdict}`);
+          console.log(`requirements=${results.length}`);
+          for (const result of results) {
+            console.log(`${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing>'}`);
+            console.log(JSON.stringify({ reason: result.reason, evidence: result.evidence }, null, 2));
+          }
+
+          if (results.length !== 2) {
+            throw new Error(`Expected exactly 2 acceptance criteria from issue #2201, observed ${results.length}`);
+          }
+
+          const redFirst = results.find((r) => /failing before the fix/i.test(r.requirement?.text ?? ''));
+          if (!redFirst) throw new Error('Missing red-first acceptance criterion');
+          if (redFirst.status !== 'UNPROVEN') {
+            throw new Error(`Current-head green CI must not prove historical red-first execution; observed ${redFirst.status}`);
+          }
+
+          const preservation = results.find((r) => /existing nav rendering.*identical.*current callers/i.test(r.requirement?.text ?? ''));
+          if (!preservation) throw new Error('Missing behavior-preservation acceptance criterion');
+
+          // Independent review strongly supports the implementation, but the
+          // first criterion contains a historical clause: "failing before the
+          // fix". The exact-head green unit suite can prove the test passes now,
+          // not that it was actually observed red on the pre-fix revision.
+          // That row must therefore stay UNPROVEN until explicit before-state
+          // execution evidence is represented.
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Batch 29 must remain NOT_PROVEN while red-first history is unobserved');
+          }
+          NODE
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: prtruth-manual-oracle-batch-29
+          path: oracle-results/*.json
