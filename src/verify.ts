@@ -81,6 +81,34 @@ function ciAssessmentToRequirementResult(
   };
 }
 
+function guardHistoricalRequirement(result: RequirementResult): RequirementResult {
+  if (
+    result.status === "PROVEN"
+    && requiresPreFixFailureEvidence(result.requirement.text)
+  ) {
+    return {
+      ...result,
+      status: "UNPROVEN",
+      reason: PRE_FIX_FAILURE_UNPROVEN_REASON
+    };
+  }
+  return result;
+}
+
+function guardHistoricalClaim(result: ClaimResult): ClaimResult {
+  if (
+    result.status === "PROVEN"
+    && requiresPreFixFailureEvidence(result.claim.text)
+  ) {
+    return {
+      ...result,
+      status: "UNPROVEN",
+      reason: PRE_FIX_FAILURE_UNPROVEN_REASON
+    };
+  }
+  return result;
+}
+
 function guardQuantifiedRequirement(result: RequirementResult): RequirementResult {
   if (
     result.status === "PROVEN"
@@ -117,32 +145,21 @@ function evaluateRequirement(
 ): RequirementResult {
   const category = checkCategory(requirement.text);
   if (category) {
-    // A current-head green test can prove that a test passes now, but cannot
-    // prove a historical red-first clause such as "failing before the fix".
-    // Keep the whole conjunctive requirement UNPROVEN until before-state
-    // execution evidence is represented explicitly.
-    if (requiresPreFixFailureEvidence(requirement.text)) {
-      return {
-        requirement,
-        status: "UNPROVEN",
-        reason: PRE_FIX_FAILURE_UNPROVEN_REASON,
-        evidence: []
-      };
-    }
-
     // Issue acceptance criteria and PR completion claims must use the same
     // scoped CI semantics. The old requirement-only path matched merely by
     // category name, which could let a generic green test job prove a stronger
     // requirement such as "Tests pass on Node 22 and Node 24".
-    return ciAssessmentToRequirementResult(
+    // Historical red-first clauses are guarded after assessment so an observed
+    // current-head failure still remains FAILED rather than being hidden.
+    return guardHistoricalRequirement(ciAssessmentToRequirementResult(
       requirement,
       assessCompletionClaim(requirement.text, checks)
-    );
+    ));
   }
 
   const overallCi = assessGenericCiSuccess(requirement.text, checks, requiredCheckContexts);
   if (overallCi) {
-    return {
+    return guardHistoricalRequirement({
       requirement,
       status: overallCi.status,
       reason: overallCi.reason,
@@ -151,7 +168,7 @@ function evaluateRequirement(
         summary: `${check.name}: ${check.conclusion ?? check.status}`,
         ...(check.htmlUrl ? { url: check.htmlUrl } : {})
       }))
-    };
+    });
   }
 
   const quantitativeMismatch = findQuantitativePatchMismatchEvidence(requirement.text, files);
@@ -267,9 +284,11 @@ export async function verifyPullRequest(input: {
         }))
       };
     })
+    .map(guardHistoricalClaim)
     .map(guardQuantifiedClaim);
   const results = requirements
     .map((requirement) => evaluateRequirement(requirement, files, checks, requiredCheckContexts))
+    .map(guardHistoricalRequirement)
     .map(guardQuantifiedRequirement);
 
   const verdict = results.some((result) => result.status === "FAILED")
