@@ -1,0 +1,100 @@
+name: Manual oracle batch 20
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/manual-oracle-batch-20.yml'
+      - 'src/**'
+      - 'test/**'
+      - 'docs/manual-oracle-corpus.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  actions: read
+  checks: read
+
+jobs:
+  public-oracle:
+    runs-on: ubuntu-24.04
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: 'false'
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout PRTruth
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+      - name: Build current PRTruth source
+        run: pnpm build
+      - name: Run database migration oracle
+        run: |
+          mkdir -p oracle-results
+          node dist/cli.js verify \
+            --repo NovaCoreLabs1/NovaLabs \
+            --issue 228 \
+            --pr 246 \
+            --policy report-only \
+            --format json \
+            --output oracle-results/novalabs-228-246.json
+      - name: Assert migration evidence boundaries
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync('oracle-results/novalabs-228-246.json', 'utf8'));
+          const report = payload.report ?? payload;
+          const results = report.results ?? [];
+          console.log(`verdict=${report.verdict}`);
+          console.log(`requirements=${results.length}`);
+          for (const result of results) {
+            console.log(`${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing>'}`);
+          }
+
+          if (results.length !== 6) {
+            throw new Error(`Expected exactly 6 explicit acceptance criteria, observed ${results.length}`);
+          }
+
+          const scripts = results.find((result) =>
+            /all four `typeorm:\*` npm scripts run against it successfully/i.test(result.requirement?.text ?? '')
+          );
+          const rollback = results.find((result) =>
+            /revert-migration.*rolls it back/i.test(result.requirement?.text ?? '')
+          );
+          if (!scripts || !rollback) {
+            throw new Error('Expected the two compound execution criteria to be extracted');
+          }
+
+          // Independent oracle: exact-head CI proves fresh migration execution,
+          // seven hubId columns and a no-drift check. It does not execute every
+          // typeorm:* script, and it does not execute revert-migration. A generic
+          // green Backend job therefore cannot prove either compound criterion.
+          if (scripts.status === 'PROVEN') {
+            throw new Error('Green CI must not prove all four TypeORM scripts when only a subset is observable');
+          }
+          if (rollback.status === 'PROVEN') {
+            throw new Error('Fresh migration success must not imply rollback execution');
+          }
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Issue must not become globally PROVEN while compound execution evidence is incomplete');
+          }
+          NODE
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: prtruth-manual-oracle-batch-20
+          path: oracle-results/*.json
