@@ -1,0 +1,94 @@
+name: Manual oracle batch 22
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/manual-oracle-batch-22.yml'
+      - 'src/**'
+      - 'test/**'
+      - 'docs/manual-oracle-batch-22.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  actions: read
+  checks: read
+
+jobs:
+  public-oracle:
+    runs-on: ubuntu-24.04
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: 'false'
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout PRTruth
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+      - name: Build current PRTruth source
+        run: pnpm build
+      - name: Run Azure external-fork promotion oracle
+        run: |
+          mkdir -p oracle-results
+          node dist/cli.js verify \
+            --repo Azure/azure-cli \
+            --issue 33965 \
+            --pr 33967 \
+            --policy report-only \
+            --format json \
+            --output oracle-results/azure-cli-33965-33967.json
+      - name: Assert promotion evidence boundaries
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync('oracle-results/azure-cli-33965-33967.json', 'utf8'));
+          const report = payload.report ?? payload;
+          const results = report.results ?? [];
+          console.log(`verdict=${report.verdict}`);
+          console.log(`requirements=${results.length}`);
+          for (const result of results) {
+            console.log(`${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing>'}`);
+          }
+
+          if (results.length !== 5) {
+            throw new Error(`Expected exactly 5 acceptance criteria from issue #33965, observed ${results.length}`);
+          }
+
+          const processCriterion = results.find((result) => /marks the Copilot fork PR ready and squash-promotes/i.test(result.requirement?.text ?? ''));
+          const routingCriterion = results.find((result) => /external-fork CI routing/i.test(result.requirement?.text ?? ''));
+          if (!processCriterion || !routingCriterion) {
+            throw new Error('Expected promotion-process and external-fork-routing criteria');
+          }
+
+          // The public resulting PR proves fork head -> Azure/dev, draft state,
+          // one commit, exact title/body shape, and successful exact-head checks.
+          // It does not expose the private/intermediate Copilot fork-PR transition
+          // needed to prove that Agent Assist marked that PR ready before promotion.
+          if (processCriterion.status === 'PROVEN') {
+            throw new Error('Do not infer an unobserved intermediate promotion action from the final PR state');
+          }
+
+          if (report.verdict === 'PROVEN' && results.some((r) => r.status !== 'PROVEN')) {
+            throw new Error('Global verdict cannot be PROVEN with unresolved acceptance criteria');
+          }
+          NODE
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: prtruth-manual-oracle-batch-22
+          path: oracle-results/*.json
