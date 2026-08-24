@@ -98,6 +98,42 @@ function addedPatchLines(file: PatchFile): PatchLine[] {
   return lines;
 }
 
+function removedPatchLines(file: PatchFile): PatchLine[] {
+  if (!file.patch) return [];
+
+  const lines: PatchLine[] = [];
+  let oldLineNumber: number | null = null;
+
+  for (const rawLine of file.patch.split("\n")) {
+    const hunk = rawLine.match(/^@@ -(\d+)(?:,\d+)? \+\d+(?:,\d+)? @@/);
+    if (hunk) {
+      oldLineNumber = Number.parseInt(hunk[1]!, 10);
+      continue;
+    }
+
+    if (oldLineNumber === null) continue;
+
+    if (rawLine.startsWith("-") && !rawLine.startsWith("---")) {
+      lines.push({
+        filename: file.filename,
+        lineNumber: oldLineNumber,
+        content: rawLine.slice(1).trim()
+      });
+      oldLineNumber += 1;
+      continue;
+    }
+
+    if (rawLine.startsWith("+")) continue;
+    oldLineNumber += 1;
+  }
+
+  return lines;
+}
+
+function hasDeletionIntent(statement: string): boolean {
+  return /\b(?:remove(?:s|d|ing)?|delet(?:e|es|ed|ing|ion)|drop(?:s|ped|ping)?|eliminat(?:e|es|ed|ing|ion)|no longer (?:use|uses|used|needed|present|exists?))\b/i.test(statement);
+}
+
 function scoreLine(statementTerms: Set<string>, line: PatchLine): number {
   const lineTerms = tokenize(line.content);
   let matches = 0;
@@ -192,23 +228,29 @@ export function findPatchCandidateEvidence(
   const statementTerms = tokenize(statement);
   if (statementTerms.size === 0 || limit <= 0) return [];
 
-  const ranked = files
-    .flatMap(addedPatchLines)
-    .map((line) => ({ line, score: scoreLine(statementTerms, line) }))
+  const candidates = [
+    ...files.flatMap(addedPatchLines).map((line) => ({ line, removed: false })),
+    ...(hasDeletionIntent(statement)
+      ? files.flatMap(removedPatchLines).map((line) => ({ line, removed: true }))
+      : [])
+  ];
+
+  const ranked = candidates
+    .map((entry) => ({ ...entry, score: scoreLine(statementTerms, entry.line) }))
     .filter((entry) => entry.score >= 2)
     .sort((a, b) => b.score - a.score || a.line.filename.localeCompare(b.line.filename) || a.line.lineNumber - b.line.lineNumber);
 
   const seen = new Set<string>();
   const evidence: Evidence[] = [];
 
-  for (const { line } of ranked) {
-    const key = `${line.filename}\u0000${line.lineNumber}\u0000${line.content}`;
+  for (const { line, removed } of ranked) {
+    const key = `${line.filename}\u0000${line.lineNumber}\u0000${line.content}\u0000${removed ? "removed" : "added"}`;
     if (seen.has(key)) continue;
     seen.add(key);
 
     evidence.push({
       kind: "diff",
-      summary: `Patch candidate: ${line.filename}:${line.lineNumber} — ${compactLine(line.content)}`
+      summary: `${removed ? "Removed patch candidate" : "Patch candidate"}: ${line.filename}:${line.lineNumber} — ${compactLine(line.content)}`
     });
 
     if (evidence.length >= limit) break;
