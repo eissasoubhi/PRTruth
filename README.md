@@ -166,7 +166,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: eissasoubhi/PRTruth@v0.1.18
+      - uses: eissasoubhi/PRTruth@v0.1.19
         with:
           pr: ${{ github.event.pull_request.number }}
           policy: report-only
@@ -267,7 +267,8 @@ PRTruth does **not** pretend that weak evidence proves a strong claim. Examples 
 - “no breaking changes” merely because normal CI is green;
 - exact test/coverage/performance numbers not present in observable evidence;
 - hidden commands inside generic wrapper steps;
-- platform, runner, service, browser, or hardware scopes that GitHub evidence does not expose.
+- platform, runner, service, browser, or hardware scopes that GitHub evidence does not expose;
+- historical red-first clauses such as “failing before the fix” when only current-head green CI is observable.
 
 ## FAQ
 
@@ -281,7 +282,7 @@ No. It does not try to replace a reviewer or generate general review comments. I
 
 ### Does green CI mean the pull request is `PROVEN`?
 
-No. Green CI proves the checks that actually ran. A business rule, authorization requirement, compatibility claim, or edge-case claim can still remain `UNPROVEN`.
+No. Green CI proves the checks that actually ran. A business rule, authorization requirement, compatibility claim, historical red-first clause, or edge-case claim can still remain `UNPROVEN`.
 
 ### Can PRTruth block a merge?
 
