@@ -1,6 +1,6 @@
 # GitHub Action
 
-PRTruth can run as a composite GitHub Action on pull requests.
+PRTruth can run as a composite GitHub Action on pull requests. Use a released tag rather than `main` so the workflow executes a fixed, auditable PRTruth version.
 
 ```yaml
 name: PRTruth
@@ -13,19 +13,28 @@ permissions:
   issues: read
   pull-requests: read
   checks: read
+  actions: read
 
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: eissasoubhi/PRTruth@main
+      - uses: eissasoubhi/PRTruth@v0.1.19
         with:
-          issue: 148
           pr: ${{ github.event.pull_request.number }}
+          policy: report-only
 ```
 
-The Action uses the repository from `github.repository` by default and renders Markdown unless another format is requested.
+The Action uses `github.repository` by default. If the pull request closes exactly one issue, PRTruth can infer that issue; otherwise pass `issue` explicitly. Markdown is the default Action report format and the job summary is enabled by default.
 
-PRTruth intentionally exits non-zero when the final verdict is not `PROVEN`, so the Action can act as a strict merge signal. This behavior can be softened at workflow level with `continue-on-error: true` when teams want report-only adoption first.
+Policies are explicit:
 
-The initial composite Action installs and builds PRTruth from the checked-out Action source. A later release can replace this bootstrap path with a bundled JavaScript Action for faster startup without changing the verification semantics.
+- `report-only` reports evidence without failing because of a PRTruth verdict;
+- `failures-only` fails only on deterministic `FAILED` evidence;
+- `strict` fails when evidence is `FAILED` or requirements remain unproven.
+
+The composite Action reads its own package version, then executes that exact public `prtruth@<version>` from the npm registry in a clean temporary directory. It disables npm lifecycle scripts, audit, funding extras, and authenticated user npm configuration for the consumer execution path.
+
+Optional inputs include `issue`, `repo`, `format`, `comment`, `github_summary`, and `token`. Enabling `comment` requires write permission for issue comments; otherwise keep the minimal read permissions above.
+
+See [GitHub Actions quickstart](github-actions.md) for copy-paste adoption and merge-gate examples.
