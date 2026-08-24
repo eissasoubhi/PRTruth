@@ -1,0 +1,84 @@
+name: Manual oracle batch 13
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/manual-oracle-batch-13.yml'
+      - 'src/**'
+      - 'test/**'
+      - 'docs/manual-oracle-batch-13.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  actions: read
+  checks: read
+
+jobs:
+  public-oracle:
+    runs-on: ubuntu-24.04
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: 'false'
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout PRTruth
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+      - name: Build current PRTruth source
+        run: pnpm build
+      - name: Run Ruby deletion oracle
+        run: |
+          mkdir -p oracle-results
+          node dist/cli.js verify \
+            --repo tylercschneider/alembic \
+            --issue 87 \
+            --pr 106 \
+            --policy report-only \
+            --format json \
+            --output oracle-results/alembic-87-106.json
+      - name: Assert authoritative criteria and conservative verdict
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync('oracle-results/alembic-87-106.json', 'utf8'));
+          const report = payload.report ?? payload;
+          const results = report.results ?? [];
+          if (results.length !== 6) throw new Error(`Expected 6 acceptance requirements, got ${results.length}`);
+          const expectedSignals = [
+            '#score`, `#next_question`',
+            'private helpers',
+            'Diagnostic#place',
+            'compile and authoring pipeline',
+            'tests covering the removed methods',
+            'full test suite passes'
+          ];
+          const texts = results.map((r) => r.requirement?.text ?? '');
+          for (const signal of expectedSignals) {
+            if (!texts.some((text) => text.includes(signal))) throw new Error(`Missing requirement signal: ${signal}`);
+          }
+          const req = Object.groupBy(results, (r) => r.status);
+          console.log(`verdict=${report.verdict}`);
+          console.log(`requirements=${results.length} proven=${req.PROVEN?.length ?? 0} failed=${req.FAILED?.length ?? 0} unproven=${req.UNPROVEN?.length ?? 0}`);
+          for (const result of results) console.log(`${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing>'}`);
+          NODE
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: prtruth-manual-oracle-batch-13
+          path: oracle-results/*.json
