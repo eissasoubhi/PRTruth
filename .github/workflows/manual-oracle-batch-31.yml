@@ -1,0 +1,87 @@
+name: Manual oracle batch 31
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/manual-oracle-batch-31.yml'
+      - 'src/**'
+      - 'test/**'
+      - 'docs/manual-oracle-batch-31.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  actions: read
+  checks: read
+
+jobs:
+  public-oracle:
+    runs-on: ubuntu-24.04
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: 'false'
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout PRTruth
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+      - name: Build current PRTruth source
+        run: pnpm build
+      - name: Run external-service workflow oracle
+        run: |
+          mkdir -p oracle-results
+          node dist/cli.js verify \
+            --repo zesty-io/manager-ui \
+            --issue 4231 \
+            --pr 4269 \
+            --policy report-only \
+            --format json \
+            --output oracle-results/manager-ui-4231-4269.json
+      - name: Assert external-service evidence stays scoped
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync('oracle-results/manager-ui-4231-4269.json', 'utf8'));
+          const report = payload.report ?? payload;
+          const results = report.results ?? [];
+          console.log(`verdict=${report.verdict}`);
+          console.log(`requirements=${results.length}`);
+          for (const result of results) {
+            console.log(`${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing>'}`);
+          }
+
+          if (results.length !== 6) {
+            throw new Error(`Expected exactly 6 acceptance criteria from issue #4231, observed ${results.length}`);
+          }
+
+          const external = results.filter((r) => /fetches the corresponding Sentry issue|single comment is posted|failure to fetch the Sentry issue/i.test(r.requirement?.text ?? ''));
+          if (external.length !== 3) {
+            throw new Error(`Expected 3 external-service/runtime criteria, observed ${external.length}`);
+          }
+          if (external.some((r) => r.status === 'PROVEN')) {
+            throw new Error('Ordinary green PR CI must not prove authenticated Sentry fetches or issue-comment side effects');
+          }
+          if (report.verdict === 'PROVEN') {
+            throw new Error('External-service workflow must not become globally PROVEN without trigger-specific live evidence');
+          }
+          NODE
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: prtruth-manual-oracle-batch-31
+          path: oracle-results/*.json
