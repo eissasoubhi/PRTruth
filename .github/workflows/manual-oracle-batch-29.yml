@@ -62,37 +62,30 @@ jobs:
           console.log(`requirements=${results.length}`);
           for (const result of results) {
             console.log(`${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing>'}`);
-            console.log(JSON.stringify({
-              reason: result.reason,
-              evidence: result.evidence,
-              evidenceRefs: result.evidenceRefs,
-              matchedEvidence: result.matchedEvidence,
-            }, null, 2));
+            console.log(JSON.stringify({ reason: result.reason, evidence: result.evidence }, null, 2));
           }
 
           if (results.length !== 2) {
             throw new Error(`Expected exactly 2 acceptance criteria from issue #2201, observed ${results.length}`);
           }
 
-          const expected = [
-            /component test passes.*img src=x onerror.*no executable markup survives/i,
-            /existing nav rendering.*identical.*current callers/i,
-          ];
-          for (const pattern of expected) {
-            if (!results.some((r) => pattern.test(r.requirement?.text ?? ''))) {
-              throw new Error(`Missing expected acceptance criterion: ${pattern}`);
-            }
+          const redFirst = results.find((r) => /failing before the fix/i.test(r.requirement?.text ?? ''));
+          if (!redFirst) throw new Error('Missing red-first acceptance criterion');
+          if (redFirst.status !== 'UNPROVEN') {
+            throw new Error(`Current-head green CI must not prove historical red-first execution; observed ${redFirst.status}`);
           }
 
-          // Independent human oracle: 2/2 are factually supported. The patch
-          // sanitizes preset.icon at the {@html} sink with DOMPurify and adds a
-          // jsdom component suite that checks event handlers, script elements,
-          // javascript: URLs, current SVG/icon-less rendering, active styling,
-          // labels, and onselect forwarding. The exact PR head also has a green
-          // Unit Tests job. PRTruth may remain conservative until it can soundly
-          // associate these source/test facts with individual requirements.
-          if (report.verdict === 'PROVEN' && results.some((r) => r.status !== 'PROVEN')) {
-            throw new Error('A global PROVEN verdict must not hide non-PROVEN requirement rows');
+          const preservation = results.find((r) => /existing nav rendering.*identical.*current callers/i.test(r.requirement?.text ?? ''));
+          if (!preservation) throw new Error('Missing behavior-preservation acceptance criterion');
+
+          // Independent review strongly supports the implementation, but the
+          // first criterion contains a historical clause: "failing before the
+          // fix". The exact-head green unit suite can prove the test passes now,
+          // not that it was actually observed red on the pre-fix revision.
+          // That row must therefore stay UNPROVEN until explicit before-state
+          // execution evidence is represented.
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Batch 29 must remain NOT_PROVEN while red-first history is unobserved');
           }
           NODE
       - name: Upload report
