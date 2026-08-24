@@ -18,6 +18,10 @@ export interface BoundWorkflowStepSource extends WorkflowStepSource {
   conclusion: string | null;
 }
 
+export interface SuccessfulWorkflowCommandProvenance extends WorkflowStepSource {
+  workflowPath: string;
+}
+
 export interface WorkflowSourceBindingInput {
   expectedHeadSha: string;
   runHeadSha: string;
@@ -167,6 +171,35 @@ export function bindExecutedWorkflowStepsToSource(
       workflowPath,
       status: observed.status,
       conclusion: observed.conclusion
+    }];
+  });
+}
+
+/**
+ * Project exact source/runtime bindings into successful command provenance.
+ *
+ * This is intentionally narrower than the binding above: only runtime steps
+ * that GitHub reports as both `completed` and `success` survive. Queued,
+ * in-progress, skipped, neutral, cancelled, timed-out, action-required, and
+ * failed steps are omitted rather than interpreted as successful execution.
+ *
+ * This helper is still provenance only. Feeding these commands into verdict
+ * evaluation remains a separate change so command semantics can be reviewed
+ * independently before any new `PROVEN` path exists.
+ */
+export function successfulWorkflowCommandProvenance(
+  bindings: BoundWorkflowStepSource[]
+): SuccessfulWorkflowCommandProvenance[] {
+  return bindings.flatMap((binding) => {
+    if (binding.status !== "completed" || binding.conclusion !== "success") {
+      return [];
+    }
+
+    return [{
+      name: binding.name,
+      run: binding.run,
+      ...(binding.shell ? { shell: binding.shell } : {}),
+      workflowPath: binding.workflowPath
     }];
   });
 }

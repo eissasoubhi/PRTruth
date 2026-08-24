@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   bindExecutedWorkflowStepsToSource,
-  extractUniqueExecutableWorkflowSteps
+  extractUniqueExecutableWorkflowSteps,
+  successfulWorkflowCommandProvenance
 } from "../src/workflow-source.js";
 
 const workflowSource = `
@@ -135,5 +136,55 @@ jobs:
         { name: "schema drift check", status: "completed", conclusion: "failure" }
       ]
     })).toEqual([]);
+  });
+
+  it("projects only completed successful bindings into command provenance", () => {
+    const bindings = [
+      {
+        name: "Apply migrations to a fresh database",
+        run: "npm run typeorm:run-migrations",
+        shell: "bash",
+        workflowPath: ".github/workflows/ci.yml",
+        status: "completed",
+        conclusion: "success"
+      },
+      {
+        name: "Schema drift check",
+        run: "npm run typeorm:generate-migration -- --check",
+        workflowPath: ".github/workflows/ci.yml",
+        status: "completed",
+        conclusion: "failure"
+      },
+      {
+        name: "Queued validation",
+        run: "npm test",
+        workflowPath: ".github/workflows/ci.yml",
+        status: "queued",
+        conclusion: null
+      }
+    ];
+
+    expect(successfulWorkflowCommandProvenance(bindings)).toEqual([
+      {
+        name: "Apply migrations to a fresh database",
+        run: "npm run typeorm:run-migrations",
+        shell: "bash",
+        workflowPath: ".github/workflows/ci.yml"
+      }
+    ]);
+  });
+
+  it("fails closed for non-success conclusions even when the runtime step completed", () => {
+    for (const conclusion of ["failure", "cancelled", "timed_out", "neutral", "skipped", "action_required", null]) {
+      expect(successfulWorkflowCommandProvenance([
+        {
+          name: "Validate",
+          run: "npm test",
+          workflowPath: ".github/workflows/ci.yml",
+          status: "completed",
+          conclusion
+        }
+      ])).toEqual([]);
+    }
   });
 });
