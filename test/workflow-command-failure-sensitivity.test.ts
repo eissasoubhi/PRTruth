@@ -80,11 +80,32 @@ jobs:
     ])).toEqual([]);
   });
 
-  it("rejects negated diagnostic conditionals that turn command failure into a green step", () => {
+  it("rejects conditional control flow whose green exit does not prove the condition command passed", () => {
     expect(successfulWorkflowCommandProvenance([
       {
-        name: "Diagnostic test",
+        name: "Positive diagnostic conditional",
+        run: "if npm test; then\n  echo 'tests passed'\nfi",
+        workflowPath: ".github/workflows/ci.yml",
+        status: "completed",
+        conclusion: "success"
+      },
+      {
+        name: "Negated diagnostic conditional",
         run: "if ! npm test; then\n  echo 'tests failed'\nfi",
+        workflowPath: ".github/workflows/ci.yml",
+        status: "completed",
+        conclusion: "success"
+      },
+      {
+        name: "Loop diagnostic",
+        run: "while npm test; do\n  break\ndone",
+        workflowPath: ".github/workflows/ci.yml",
+        status: "completed",
+        conclusion: "success"
+      },
+      {
+        name: "Case diagnostic",
+        run: "case \"$MODE\" in\n  strict) npm test ;;\n  *) echo skipped ;;\nesac",
         workflowPath: ".github/workflows/ci.yml",
         status: "completed",
         conclusion: "success"
