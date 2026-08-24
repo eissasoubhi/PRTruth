@@ -3,6 +3,7 @@ import type { Requirement } from "./types.js";
 const ATX_HEADING = /^(#{1,6})\s+(.+?)\s*#*\s*$/;
 const BOLD_HEADING = /^\s*\*\*(.+?)\*\*\s*$/;
 const PLAIN_SECTION_LABEL = /^\s*([^#*].*?)\s*[:：]\s*$/;
+const INLINE_ACCEPTANCE_LABEL = /^\s*\*\*(acceptance(?: criteria)?|requirements?|definition of done|success criteria|criteria)\s*[.:：]\*\*\s+(.+)$/i;
 const CHECKBOX = /^\s*[-*+]\s+\[([ xX])\]\s+(.+)$/;
 const LIST_ITEM = /^\s*(?:[-*+]|\d+[.)])\s+(.+)$/;
 const LABELED_CRITERION = /^\s*(?:AC|REQ|CRITERION)[-_ ]?\d+(?:\s*\[[^\]]+\])?\s*[:.)-]\s*(.*)$/i;
@@ -128,6 +129,34 @@ function listRequirement(
   };
 }
 
+function extractInlineAcceptance(lines: string[]): Requirement[] {
+  const requirements: Requirement[] = [];
+
+  for (const line of lines) {
+    const match = line.match(INLINE_ACCEPTANCE_LABEL);
+    if (!match) continue;
+
+    const body = normalizeText(match[2] ?? "");
+    if (!body) continue;
+
+    const clauses = body
+      .split(/\s*;\s*/)
+      .map((clause) => normalizeText(clause))
+      .filter((clause) => clause.length >= 8);
+
+    if (clauses.length === 0) continue;
+    for (const clause of clauses) {
+      requirements.push({
+        id: `REQ-${requirements.length + 1}`,
+        text: clause,
+        source: "acceptance-section"
+      });
+    }
+  }
+
+  return requirements;
+}
+
 function extractListSections(
   lines: string[],
   sectionPattern: RegExp,
@@ -241,6 +270,9 @@ function extractLabeledAcceptanceCriteria(lines: string[]): Requirement[] {
 }
 
 function extractAcceptanceSections(lines: string[]): Requirement[] {
+  const inline = extractInlineAcceptance(lines);
+  if (inline.length > 0) return inline;
+
   const labeled = extractLabeledAcceptanceCriteria(lines);
   if (labeled.length > 0) return labeled;
   return extractListSections(lines, ACCEPTANCE_SECTION, "acceptance-section");
