@@ -1,0 +1,91 @@
+name: Manual oracle batch 21
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/manual-oracle-batch-21.yml'
+      - 'src/**'
+      - 'test/**'
+      - 'docs/manual-oracle-corpus.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  actions: read
+  checks: read
+
+jobs:
+  public-oracle:
+    runs-on: ubuntu-24.04
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: 'false'
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout PRTruth
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+      - name: Build current PRTruth source
+        run: pnpm build
+      - name: Run Android Kotlin oracle
+        run: |
+          mkdir -p oracle-results
+          node dist/cli.js verify \
+            --repo LocNgu/YAPT-Yet-Another-Plant-Tracker \
+            --issue 572 \
+            --pr 584 \
+            --policy report-only \
+            --format json \
+            --output oracle-results/yapt-572-584.json
+      - name: Assert Android evidence boundaries
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync('oracle-results/yapt-572-584.json', 'utf8'));
+          const report = payload.report ?? payload;
+          const results = report.results ?? [];
+          console.log(`verdict=${report.verdict}`);
+          console.log(`requirements=${results.length}`);
+          for (const result of results) {
+            console.log(`${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing>'}`);
+          }
+
+          if (results.length !== 11) {
+            throw new Error(`Expected exactly 11 acceptance criteria from issue #572, observed ${results.length}`);
+          }
+
+          const exactMath = results.find((result) => /Every displayed number matches what `CareSchedule` actually used/i.test(result.requirement?.text ?? ''));
+          const semantics = results.find((result) => /Compose UI tests assert user-visible semantics/i.test(result.requirement?.text ?? ''));
+          if (!exactMath || !semantics) {
+            throw new Error('Expected exact-math and semantic-UI acceptance criteria');
+          }
+
+          // Independent inspection confirms exact-head Android CI ran unit tests,
+          // lint, Detekt, APK build and instrumented tests. Those broad jobs do
+          // not by themselves prove a particular UI/data semantic requirement.
+          // Keep these rows conservative until source/test association is bound
+          // deterministically rather than inferred from a green workflow.
+          if (report.verdict === 'PROVEN' && results.some((r) => r.status !== 'PROVEN')) {
+            throw new Error('Global verdict cannot be PROVEN with unresolved acceptance criteria');
+          }
+          NODE
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: prtruth-manual-oracle-batch-21
+          path: oracle-results/*.json
