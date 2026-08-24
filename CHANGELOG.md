@@ -2,6 +2,28 @@
 
 All notable changes to PRTruth are documented in this file.
 
+## 0.1.19
+
+Evidence-history corrective release.
+
+### Fixed
+
+- Requirements that explicitly require historical red-first evidence, such as `failing before the fix`, `red-first`, or `fails against the pre-fix implementation`, can no longer become `PROVEN` solely from successful current-head test checks.
+- Current-head green CI remains valid evidence for ordinary present-tense test requirements, while historical before-state clauses stay `UNPROVEN` unless trustworthy before-state execution evidence is observable.
+- Existing explicit current failures keep their `FAILED` precedence while the historical guard prevents an unrelated green head run from fabricating a before-state result.
+
+### Dogfooding
+
+- Added Manual Oracle Batch 29 from a real public Svelte security-hardening history.
+- The oracle exposed a critical false `PROVEN`: the fixed head's successful component tests were incorrectly treated as proof that the malicious-input regression had failed before the fix.
+- The corrected oracle now keeps that conjunctive historical criterion `UNPROVEN` while preserving ordinary current-head test evidence.
+
+### Documentation and distribution
+
+- Public GitHub Action examples are aligned to `v0.1.19` and remain repository-neutral.
+- The stale standalone GitHub Action reference now documents released-tag usage, explicit policies, current composite-Action npm execution, and relevant permissions accurately.
+- The npm discovery keyword `ai` remains unchanged.
+
 ## 0.1.18
 
 Evidence-integrity corrective release.
