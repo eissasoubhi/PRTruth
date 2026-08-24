@@ -1,0 +1,92 @@
+name: Manual oracle batch 23
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/manual-oracle-batch-23.yml'
+      - 'src/**'
+      - 'test/**'
+      - 'docs/manual-oracle-batch-23.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  actions: read
+  checks: read
+
+jobs:
+  public-oracle:
+    runs-on: ubuntu-24.04
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: 'false'
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout PRTruth
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+      - name: Build current PRTruth source
+        run: pnpm build
+      - name: Run OpenAPI drift-gate oracle
+        run: |
+          mkdir -p oracle-results
+          node dist/cli.js verify \
+            --repo ApexChainx/ApexChainx-Frontend \
+            --issue 272 \
+            --pr 282 \
+            --policy report-only \
+            --format json \
+            --output oracle-results/apexchainx-272-282.json
+      - name: Assert execution-provenance boundaries
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync('oracle-results/apexchainx-272-282.json', 'utf8'));
+          const report = payload.report ?? payload;
+          const results = report.results ?? [];
+          console.log(`verdict=${report.verdict}`);
+          console.log(`requirements=${results.length}`);
+          for (const result of results) {
+            console.log(`${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing>'}`);
+          }
+
+          if (results.length !== 3) {
+            throw new Error(`Expected exactly 3 acceptance criteria from issue #272, observed ${results.length}`);
+          }
+
+          const runCodegen = results.find((r) => /CI runs the OpenAPI codegen step/i.test(r.requirement?.text ?? ''));
+          const failOnDrift = results.find((r) => /CI fails if generated types differ from committed/i.test(r.requirement?.text ?? ''));
+          const workflowPath = results.find((r) => /workflow file is added at .*api-codegen-check\.yml/i.test(r.requirement?.text ?? ''));
+          if (!runCodegen || !failOnDrift || !workflowPath) {
+            throw new Error('Expected all three OpenAPI codegen acceptance criteria');
+          }
+
+          // Human inspection has exact-head successful runtime steps named
+          // "Run OpenAPI codegen" and "Fail if generated types drifted", plus
+          // exact workflow source showing the commands and fail-closed branch.
+          // Until successful command provenance is intentionally integrated into
+          // verdict semantics, the corpus must not gain a broad green-CI shortcut.
+          if (report.verdict === 'PROVEN' && results.some((r) => r.status !== 'PROVEN')) {
+            throw new Error('Global verdict cannot be PROVEN with unresolved acceptance criteria');
+          }
+          NODE
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: prtruth-manual-oracle-batch-23
+          path: oracle-results/*.json
