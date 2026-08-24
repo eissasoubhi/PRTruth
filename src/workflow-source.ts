@@ -6,6 +6,27 @@ export interface WorkflowStepSource {
   shell?: string;
 }
 
+export interface ObservedWorkflowStep {
+  name: string;
+  status: string;
+  conclusion: string | null;
+}
+
+export interface BoundWorkflowStepSource extends WorkflowStepSource {
+  workflowPath: string;
+  status: string;
+  conclusion: string | null;
+}
+
+export interface WorkflowSourceBindingInput {
+  expectedHeadSha: string;
+  runHeadSha: string;
+  workflowPath: string;
+  sourcePath: string;
+  source: string;
+  observedSteps: ObservedWorkflowStep[];
+}
+
 interface WorkflowStepLike {
   name?: unknown;
   run?: unknown;
@@ -28,6 +49,14 @@ function nonEmptyString(value: unknown): string | null {
 
 function normalizedStepName(name: string): string {
   return name.trim().toLowerCase();
+}
+
+function normalizedWorkflowPath(path: string): string {
+  return path.trim().replace(/^\/+/, "");
+}
+
+function isWorkflowPath(path: string): boolean {
+  return /^\.github\/workflows\/[^/]+\.ya?ml$/i.test(path);
 }
 
 /**
@@ -82,4 +111,62 @@ export function extractUniqueExecutableWorkflowSteps(source: string): WorkflowSt
   }
 
   return candidates.filter((candidate) => counts.get(normalizedStepName(candidate.name)) === 1);
+}
+
+/**
+ * Bind observed runtime step names to executable commands from the exact
+ * workflow source that produced them.
+ *
+ * The binding deliberately refuses to guess. It returns no provenance unless:
+ * - the workflow run head is exactly the PR head being verified;
+ * - the fetched source path is exactly the workflow path reported by the run;
+ * - the path is a normal `.github/workflows/*.yml|yaml` file;
+ * - both source and runtime step names are unique after normalization.
+ *
+ * This still does not make a command successful evidence by itself. Consumers
+ * must separately interpret the observed runtime status/conclusion and apply
+ * the existing evidence semantics.
+ */
+export function bindExecutedWorkflowStepsToSource(
+  input: WorkflowSourceBindingInput
+): BoundWorkflowStepSource[] {
+  const expectedHeadSha = input.expectedHeadSha.trim();
+  const runHeadSha = input.runHeadSha.trim();
+  if (!expectedHeadSha || runHeadSha !== expectedHeadSha) return [];
+
+  const workflowPath = normalizedWorkflowPath(input.workflowPath);
+  const sourcePath = normalizedWorkflowPath(input.sourcePath);
+  if (!isWorkflowPath(workflowPath) || workflowPath !== sourcePath) return [];
+
+  const sourceSteps = extractUniqueExecutableWorkflowSteps(input.source);
+  if (sourceSteps.length === 0) return [];
+
+  const observedCounts = new Map<string, number>();
+  for (const step of input.observedSteps) {
+    const name = nonEmptyString(step.name);
+    if (!name) continue;
+    const key = normalizedStepName(name);
+    observedCounts.set(key, (observedCounts.get(key) ?? 0) + 1);
+  }
+
+  const observedByName = new Map<string, ObservedWorkflowStep>();
+  for (const step of input.observedSteps) {
+    const name = nonEmptyString(step.name);
+    if (!name) continue;
+    const key = normalizedStepName(name);
+    if (observedCounts.get(key) === 1) {
+      observedByName.set(key, step);
+    }
+  }
+
+  return sourceSteps.flatMap((sourceStep) => {
+    const observed = observedByName.get(normalizedStepName(sourceStep.name));
+    if (!observed) return [];
+    return [{
+      ...sourceStep,
+      workflowPath,
+      status: observed.status,
+      conclusion: observed.conclusion
+    }];
+  });
 }
