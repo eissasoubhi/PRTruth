@@ -1,0 +1,97 @@
+name: Manual oracle batch 29
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/manual-oracle-batch-29.yml'
+      - 'src/**'
+      - 'test/**'
+      - 'docs/manual-oracle-batch-29.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  actions: read
+  checks: read
+
+jobs:
+  public-oracle:
+    runs-on: ubuntu-24.04
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: 'false'
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout PRTruth
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+      - name: Build current PRTruth source
+        run: pnpm build
+      - name: Run Svelte XSS hardening oracle
+        run: |
+          mkdir -p oracle-results
+          node dist/cli.js verify \
+            --repo mydcc/cachy-app \
+            --issue 2201 \
+            --pr 2279 \
+            --policy report-only \
+            --format json \
+            --output oracle-results/cachy-2201-2279.json
+      - name: Assert conservative requirement extraction
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync('oracle-results/cachy-2201-2279.json', 'utf8'));
+          const report = payload.report ?? payload;
+          const results = report.results ?? [];
+          console.log(`verdict=${report.verdict}`);
+          console.log(`requirements=${results.length}`);
+          for (const result of results) {
+            console.log(`${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing>'}`);
+          }
+
+          if (results.length !== 2) {
+            throw new Error(`Expected exactly 2 acceptance criteria from issue #2201, observed ${results.length}`);
+          }
+
+          const expected = [
+            /component test passes.*img src=x onerror.*no executable markup survives/i,
+            /existing nav rendering.*identical.*current callers/i,
+          ];
+          for (const pattern of expected) {
+            if (!results.some((r) => pattern.test(r.requirement?.text ?? ''))) {
+              throw new Error(`Missing expected acceptance criterion: ${pattern}`);
+            }
+          }
+
+          // Independent human oracle: 2/2 are factually supported. The patch
+          // sanitizes preset.icon at the {@html} sink with DOMPurify and adds a
+          // jsdom component suite that checks event handlers, script elements,
+          // javascript: URLs, current SVG/icon-less rendering, active styling,
+          // labels, and onselect forwarding. The exact PR head also has a green
+          // Unit Tests job. PRTruth may remain UNPROVEN until it can soundly
+          // associate these source/test facts with individual requirements.
+          if (report.verdict === 'PROVEN' && results.some((r) => r.status !== 'PROVEN')) {
+            throw new Error('A global PROVEN verdict must not hide non-PROVEN requirement rows');
+          }
+          NODE
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: prtruth-manual-oracle-batch-29
+          path: oracle-results/*.json
