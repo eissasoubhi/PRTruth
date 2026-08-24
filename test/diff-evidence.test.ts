@@ -22,6 +22,15 @@ const composerRetryPatch = `@@ -51,7 +51,26 @@ jobs:
 +            echo "::warning::Composer install failed on attempt \${attempt}/5; retrying with the same cache."
 +          done`;
 
+const deletionPatch = `@@ -10,7 +10,3 @@ class Diagnostic
+-  def unused_legacy_helper
+-    legacy_payload
+-  end
+-
+   def place
+     @place
+   end`;
+
 describe("patch candidate evidence", () => {
   it("surfaces relevant added lines for a concurrency requirement", () => {
     const evidence = findPatchCandidateEvidence(
@@ -122,6 +131,27 @@ describe("patch candidate evidence", () => {
     const evidence = findPatchCandidateEvidence(
       "Only administrators can delete users.",
       [{ filename: "src/admin.ts", patch: "@@ -1,1 +1,1 @@\n+const admin = true;" }]
+    );
+
+    expect(evidence).toEqual([]);
+  });
+
+  it("surfaces removed lines as reviewer-navigation evidence for deletion requirements", () => {
+    const evidence = findPatchCandidateEvidence(
+      "Remove the unused legacy helper method.",
+      [{ filename: "lib/diagnostic.rb", patch: deletionPatch }]
+    );
+
+    expect(evidence).toHaveLength(1);
+    expect(evidence[0]?.summary).toContain("Removed patch candidate");
+    expect(evidence[0]?.summary).toContain("unused_legacy_helper");
+    expect(evidence.every((item) => !("status" in item))).toBe(true);
+  });
+
+  it("does not surface removed lines for statements without deletion intent", () => {
+    const evidence = findPatchCandidateEvidence(
+      "Document the unused legacy helper method.",
+      [{ filename: "lib/diagnostic.rb", patch: deletionPatch }]
     );
 
     expect(evidence).toEqual([]);
