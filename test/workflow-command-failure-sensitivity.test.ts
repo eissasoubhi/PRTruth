@@ -54,6 +54,38 @@ jobs:
     ]);
   });
 
+  it("rejects plain shell pipelines because an earlier stage can fail while the step stays green", () => {
+    expect(successfulWorkflowCommandProvenance([
+      {
+        name: "Diagnostic pipeline",
+        run: "npm test | tee test.log",
+        workflowPath: ".github/workflows/ci.yml",
+        status: "completed",
+        conclusion: "success"
+      },
+      {
+        name: "Multiline pipeline",
+        run: "npm run lint \\\n  | tee lint.log",
+        workflowPath: ".github/workflows/ci.yml",
+        status: "completed",
+        conclusion: "success"
+      },
+      {
+        name: "Strict sequential validation",
+        run: "npm test && npm run lint",
+        workflowPath: ".github/workflows/ci.yml",
+        status: "completed",
+        conclusion: "success"
+      }
+    ])).toEqual([
+      {
+        name: "Strict sequential validation",
+        run: "npm test && npm run lint",
+        workflowPath: ".github/workflows/ci.yml"
+      }
+    ]);
+  });
+
   it("rejects unconditional success tails that can hide an earlier command failure", () => {
     expect(successfulWorkflowCommandProvenance([
       {
