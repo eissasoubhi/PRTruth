@@ -4,7 +4,7 @@ This oracle uses public repository history from `azholdaspaev/netty-loom-spring`
 
 ## Why this case matters
 
-The issue has five explicit acceptance criteria for a Maven Central publishing workflow. The merged pull request deliberately departs from several of them and explains why. This makes the case useful for separating factual requirement satisfaction from justified design deviations and follow-up work.
+The issue has five top-level acceptance criteria for a Maven Central publishing workflow. The merged pull request deliberately departs from several of them and explains why. This makes the case useful for separating factual requirement satisfaction from justified design deviations and follow-up work.
 
 A verifier must not silently turn a documented deviation into `PROVEN`, but it also should not lose the distinction between a genuine defect, a deliberate replacement design, and a criterion that is blocked on external setup.
 
@@ -20,9 +20,34 @@ Literal issue oracle: **2/5 PROVEN, 3/5 not satisfied as written; issue-level FA
 
 The exact PR head `a6eb9326bb1c251c87664fbf7cd571db44501001` has a successful `Build` workflow run. That broad build success supports repository health but does not prove the external Central snapshot dry-run criterion.
 
+## PRTruth comparison
+
+The real public rerun reports **`NOT_PROVEN` with 0 PROVEN / 0 FAILED / 7 UNPROVEN**.
+
+PRTruth currently atomizes the two nested job bullets under the first top-level acceptance criterion. The issue therefore has five human-authored top-level criteria but seven verifier rows:
+
+1. `.github/workflows/publish.yml` exists with two jobs;
+2. snapshot behavior;
+3. release behavior;
+4. GitHub-provided secrets;
+5. fail-loud missing-secret behavior;
+6. external snapshot dry-run;
+7. release-note generation.
+
+This run keeps that granularity observable rather than changing parser semantics merely to make the corpus match the human grouping. Nested bullets can be independently testable requirements, so `5 -> 7` is a requirement-model/granularity question rather than an automatic extraction defect.
+
+The disagreements split into distinct classes:
+
+- **Missing deterministic workflow-source adapter:** the fail-loud behavior and release-note generation are factually supported by concrete workflow structure, but PRTruth does not yet prove those source-level semantics safely.
+- **Requirement-resolution/model gap:** the snapshot trigger and release-upload mechanism deliberately replace literal issue instructions after the author concluded those instructions were wrong or undesirable. That is neither ordinary `PROVEN` nor an accidental implementation failure.
+- **Literal mismatch with an intentional design choice:** the snapshot job does not consume GPG secrets. A future resolution model should preserve that the requirement was consciously revised rather than pretending the original text became true.
+- **Genuinely incomplete / follow-up blocked:** the Central Snapshots dry-run was explicitly not performed and remains dependent on external Portal setup. It must not become `PROVEN` from a merged PR or a broad green build.
+
+No verifier semantic is changed for this case. In particular, the corpus does not introduce fuzzy workflow-to-requirement matching or treat merge/closure as evidence of acceptance completion.
+
 ## Model finding
 
-This case strengthens the need for requirement-resolution metadata separate from the factual evidence status. At least three different states appear here:
+This case strengthens the need for requirement-resolution metadata separate from factual evidence status. At least three different states appear here:
 
 - a **deliberate replacement/deviation** from the original requirement because the requirement described an invalid or unwanted implementation;
 - a **follow-up blocked on external configuration** where the original criterion remains factually incomplete;
