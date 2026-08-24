@@ -71,7 +71,13 @@ jobs:
           for (const signal of expectedSignals) {
             if (!texts.some((text) => text.includes(signal))) throw new Error(`Missing requirement signal: ${signal}`);
           }
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Deletion/preservation requirements must not become globally PROVEN from broad green CI alone');
+          }
           const req = Object.groupBy(results, (r) => r.status);
+          if ((req.PROVEN?.length ?? 0) !== 0) {
+            throw new Error(`Expected all six structural requirements to remain conservative, got ${req.PROVEN?.length ?? 0} PROVEN`);
+          }
           console.log(`verdict=${report.verdict}`);
           console.log(`requirements=${results.length} proven=${req.PROVEN?.length ?? 0} failed=${req.FAILED?.length ?? 0} unproven=${req.UNPROVEN?.length ?? 0}`);
           for (const result of results) console.log(`${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing>'}`);
