@@ -112,24 +112,61 @@ function extractListSections(
   source: Requirement["source"]
 ): Requirement[] {
   let section: MarkdownHeading | null = null;
+  let current: string[] = [];
   const requirements: Requirement[] = [];
+
+  const flush = () => {
+    if (current.length === 0) return;
+    const requirement = listRequirement(
+      current.join(" "),
+      source,
+      requirements.length + 1
+    );
+    current = [];
+    if (requirement) requirements.push(requirement);
+  };
 
   for (const line of lines) {
     const heading = parseHeading(line);
     if (heading) {
-      if (section && closesSection(section, heading)) section = null;
-      if (sectionPattern.test(heading.text)) section = heading;
+      if (section && closesSection(section, heading)) {
+        flush();
+        section = null;
+      }
+      if (sectionPattern.test(heading.text)) {
+        flush();
+        section = heading;
+      }
       continue;
     }
 
     if (!section) continue;
-    const item = line.match(LIST_ITEM);
-    if (!item) continue;
 
-    const requirement = listRequirement(item[1] ?? "", source, requirements.length + 1);
-    if (requirement) requirements.push(requirement);
+    const item = line.match(LIST_ITEM);
+    if (item) {
+      flush();
+      current.push(item[1] ?? "");
+      continue;
+    }
+
+    if (current.length === 0) continue;
+    if (!line.trim()) {
+      flush();
+      continue;
+    }
+
+    // Markdown list items commonly wrap long criteria onto indented lines.
+    // Preserve only indented continuation text so an unrelated paragraph in
+    // the same section cannot silently become part of the requirement.
+    if (/^\s{2,}\S/.test(line)) {
+      current.push(line.trim());
+      continue;
+    }
+
+    flush();
   }
 
+  flush();
   return requirements;
 }
 
