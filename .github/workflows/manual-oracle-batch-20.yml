@@ -51,7 +51,7 @@ jobs:
             --policy report-only \
             --format json \
             --output oracle-results/novalabs-228-246.json
-      - name: Print exact requirement matrix
+      - name: Assert migration evidence boundaries
         run: |
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
@@ -63,8 +63,33 @@ jobs:
           for (const result of results) {
             console.log(`${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing>'}`);
           }
+
           if (results.length !== 6) {
             throw new Error(`Expected exactly 6 explicit acceptance criteria, observed ${results.length}`);
+          }
+
+          const scripts = results.find((result) =>
+            /all four `typeorm:\*` npm scripts run against it successfully/i.test(result.requirement?.text ?? '')
+          );
+          const rollback = results.find((result) =>
+            /revert-migration.*rolls it back/i.test(result.requirement?.text ?? '')
+          );
+          if (!scripts || !rollback) {
+            throw new Error('Expected the two compound execution criteria to be extracted');
+          }
+
+          // Independent oracle: exact-head CI proves fresh migration execution,
+          // seven hubId columns and a no-drift check. It does not execute every
+          // typeorm:* script, and it does not execute revert-migration. A generic
+          // green Backend job therefore cannot prove either compound criterion.
+          if (scripts.status === 'PROVEN') {
+            throw new Error('Green CI must not prove all four TypeORM scripts when only a subset is observable');
+          }
+          if (rollback.status === 'PROVEN') {
+            throw new Error('Fresh migration success must not imply rollback execution');
+          }
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Issue must not become globally PROVEN while compound execution evidence is incomplete');
           }
           NODE
       - name: Upload report
