@@ -65,7 +65,14 @@ function isWorkflowPath(path: string): boolean {
 }
 
 function hasExplicitFailureSuppression(run: string): boolean {
-  return /\|\|/.test(run) || /(^|\n)\s*set\s+\+e(?:\s|$)/i.test(run);
+  const normalized = run.replace(/\r\n/g, "\n");
+
+  return (
+    /\|\|/.test(normalized) ||
+    /(^|\n)\s*set\s+\+e(?:\s|$)/i.test(normalized) ||
+    /(?:^|[;\n])\s*(?:true|:|exit\s+0)\s*(?:$|[;\n])/i.test(normalized) ||
+    /(^|\n)\s*if\s+!\s+[^\n;]+(?:;\s*then|\s+then)(?:[\s\S]*?)\bfi\s*(?:$|\n)/im.test(normalized)
+  );
 }
 
 /**
@@ -192,9 +199,10 @@ export function bindExecutedWorkflowStepsToSource(
  * that GitHub reports as both `completed` and `success` survive. Queued,
  * in-progress, skipped, neutral, cancelled, timed-out, action-required, and
  * failed steps are omitted rather than interpreted as successful execution.
- * Commands with explicit shell-level failure suppression such as `||` or
- * `set +e` are also omitted because a green step would not prove the guarded
- * command itself succeeded.
+ * Commands with explicit shell-level failure suppression such as `||`,
+ * `set +e`, unconditional success tails (`true`, `:`, `exit 0`), or negated
+ * diagnostic `if ! command; then ...; fi` blocks are also omitted because a
+ * green step would not prove the guarded command itself succeeded.
  *
  * This helper is still provenance only. Feeding these commands into verdict
  * evaluation remains a separate change so command semantics can be reviewed
