@@ -35,6 +35,7 @@ interface WorkflowStepLike {
   name?: unknown;
   run?: unknown;
   shell?: unknown;
+  "continue-on-error"?: unknown;
 }
 
 interface WorkflowJobLike {
@@ -63,6 +64,10 @@ function isWorkflowPath(path: string): boolean {
   return /^\.github\/workflows\/[^/]+\.ya?ml$/i.test(path);
 }
 
+function hasExplicitFailureSuppression(run: string): boolean {
+  return /\|\|/.test(run) || /(^|\n)\s*set\s+\+e(?:\s|$)/i.test(run);
+}
+
 /**
  * Extract executable `run:` steps from a GitHub Actions workflow source file.
  *
@@ -70,7 +75,9 @@ function isWorkflowPath(path: string): boolean {
  * an explicit non-empty `name` and executable `run` command. If the same step
  * name appears more than once anywhere in the workflow, all copies are omitted
  * because an observed runtime step could not be bound to one source command
- * unambiguously from its name alone.
+ * unambiguously from its name alone. Steps with `continue-on-error` are omitted
+ * unless that value is explicitly boolean `false`; dynamic expressions are
+ * treated as ambiguous rather than assumed to be strict.
  *
  * Parsing source is provenance enrichment only. Callers must still bind the
  * workflow file to the exact executed workflow run and exact PR head before
@@ -100,6 +107,9 @@ export function extractUniqueExecutableWorkflowSteps(source: string): WorkflowSt
       const name = nonEmptyString(step.name);
       const run = nonEmptyString(step.run);
       if (!name || !run) continue;
+
+      const continueOnError = step["continue-on-error"];
+      if (continueOnError !== undefined && continueOnError !== false) continue;
 
       const shell = nonEmptyString(step.shell);
       const candidate: WorkflowStepSource = {
@@ -182,6 +192,9 @@ export function bindExecutedWorkflowStepsToSource(
  * that GitHub reports as both `completed` and `success` survive. Queued,
  * in-progress, skipped, neutral, cancelled, timed-out, action-required, and
  * failed steps are omitted rather than interpreted as successful execution.
+ * Commands with explicit shell-level failure suppression such as `||` or
+ * `set +e` are also omitted because a green step would not prove the guarded
+ * command itself succeeded.
  *
  * This helper is still provenance only. Feeding these commands into verdict
  * evaluation remains a separate change so command semantics can be reviewed
@@ -191,7 +204,11 @@ export function successfulWorkflowCommandProvenance(
   bindings: BoundWorkflowStepSource[]
 ): SuccessfulWorkflowCommandProvenance[] {
   return bindings.flatMap((binding) => {
-    if (binding.status !== "completed" || binding.conclusion !== "success") {
+    if (
+      binding.status !== "completed" ||
+      binding.conclusion !== "success" ||
+      hasExplicitFailureSuppression(binding.run)
+    ) {
       return [];
     }
 
