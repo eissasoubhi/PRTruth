@@ -60,16 +60,16 @@ jobs:
           const results = report.results ?? [];
           if (results.length !== 10) throw new Error(`Expected 10 acceptance requirements, got ${results.length}`);
           const expectedSignals = [
-            'godot-validation.yml exists',
+            'godot-validation.yml` exists',
             'checks out the supplied ref',
             'head-SHA input is empty',
             'head-SHA input is non-empty',
             'check run is created *before*',
             'contains a single job',
             'Both YAML files parse',
-            'validate-godot.sh is byte-for-byte unchanged',
+            'validate-godot.sh` is byte-for-byte unchanged',
             'Existing tests pass',
-            'validate-godot.sh passes'
+            'validate-godot.sh` passes'
           ];
           const texts = results.map((r) => r.requirement?.text ?? '');
           for (const signal of expectedSignals) {
