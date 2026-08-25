@@ -52,6 +52,16 @@ Something else.
     expect(result[1]?.checked).toBe(true);
   });
 
+  it("recognizes plain inline acceptance labels without weakening composite text", () => {
+    const result = extractRequirements(`
+Acceptance criteria: \`THANKS.md\` must exist at the repository root with exactly one line (\`thanks\`) and no other file may be changed.
+`);
+
+    expect(result.map((item) => item.text)).toEqual([
+      "`THANKS.md` must exist at the repository root with exactly one line (`thanks`) and no other file may be changed."
+    ]);
+  });
+
   it("recognizes singular Acceptance headings and ignores preceding evidence lists", () => {
     const result = extractRequirements(`
 **Evidence:**
