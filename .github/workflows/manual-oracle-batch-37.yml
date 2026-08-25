@@ -52,7 +52,7 @@ jobs:
             --policy report-only \
             --format json \
             --output oracle-results/eeebot-59-65.json
-      - name: Assert maintainer live-verification evidence is recognized
+      - name: Assert trusted prose does not over-prove composite rollout criterion
         run: |
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
@@ -73,8 +73,8 @@ jobs:
           if (!rollout) {
             throw new Error('Expected rollout/live-occurrence acceptance criterion to be extracted');
           }
-          if (rollout.status !== 'PROVEN') {
-            throw new Error(`False-negative regression: trusted maintainer comment records merge 12c4c7c, rollout live since 03:40 UTC, and quotes the requested live rows, but PRTruth returned ${rollout.status}`);
+          if (rollout.status !== 'UNPROVEN') {
+            throw new Error(`Composite lifecycle criterion must remain UNPROVEN without authoritative test execution evidence; observed ${rollout.status}`);
           }
           NODE
       - name: Upload report
