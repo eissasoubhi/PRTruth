@@ -50,7 +50,7 @@ describe("fetchExactHeadTextFile", () => {
     })).resolves.toBeNull();
   });
 
-  it("fails closed on directories, unsupported encodings, or binary content", async () => {
+  it("fails closed on directories, unsupported encodings, binary content, or invalid UTF-8", async () => {
     const directoryFetch = vi.fn(async () => jsonResponse({
       type: "dir",
       path: "config",
@@ -89,6 +89,20 @@ describe("fetchExactHeadTextFile", () => {
       path: "image.bin",
       headSha: HEAD_SHA,
       fetchImpl: binaryFetch
+    })).resolves.toBeNull();
+
+    const invalidUtf8Fetch = vi.fn(async () => jsonResponse({
+      type: "file",
+      path: "config.txt",
+      sha: "blob-sha",
+      encoding: "base64",
+      content: Buffer.from([0xc3, 0x28]).toString("base64")
+    })) as typeof fetch;
+    await expect(fetchExactHeadTextFile({
+      repository: "example/repo",
+      path: "config.txt",
+      headSha: HEAD_SHA,
+      fetchImpl: invalidUtf8Fetch
     })).resolves.toBeNull();
   });
 
