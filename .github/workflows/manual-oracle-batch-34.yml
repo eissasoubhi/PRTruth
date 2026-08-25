@@ -1,0 +1,90 @@
+name: Manual oracle batch 34
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/manual-oracle-batch-34.yml'
+      - 'src/**'
+      - 'test/**'
+      - 'docs/manual-oracle-batch-34.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  actions: read
+  checks: read
+  pull-requests: read
+
+jobs:
+  public-oracle:
+    runs-on: ubuntu-24.04
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: 'false'
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout PRTruth
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+      - name: Build current PRTruth source
+        run: pnpm build
+      - name: Run final-head visual-evidence oracle
+        run: |
+          mkdir -p oracle-results
+          node dist/cli.js verify \
+            --repo reitojike/stage-tracker \
+            --issue 109 \
+            --pr 110 \
+            --policy report-only \
+            --format json \
+            --output oracle-results/stage-tracker-109-110.json
+      - name: Assert final-head visual evidence stays fail-closed
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync('oracle-results/stage-tracker-109-110.json', 'utf8'));
+          const report = payload.report ?? payload;
+          const results = report.results ?? [];
+          console.log(`verdict=${report.verdict}`);
+          console.log(`requirements=${results.length}`);
+          for (const result of results) {
+            console.log(`${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing>'}`);
+          }
+
+          if (results.length !== 20) {
+            throw new Error(`Expected exactly 20 acceptance criteria from issue #109, observed ${results.length}`);
+          }
+
+          const visual = results.find((result) =>
+            /final head SHA.*representative visual evidence/i.test(result.requirement?.text ?? '')
+          );
+          if (!visual) {
+            throw new Error('Expected the explicit final-head visual-evidence acceptance criterion to be extracted');
+          }
+          if (visual.status === 'PROVEN') {
+            throw new Error('Merged state, green CI, or text-only review notes must not by themselves prove final-head visual evidence');
+          }
+          if (report.verdict === 'PROVEN') {
+            throw new Error('The report must not be globally PROVEN while final-head visual evidence lacks durable matching evidence');
+          }
+          NODE
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: prtruth-manual-oracle-batch-34
+          path: oracle-results/*.json
