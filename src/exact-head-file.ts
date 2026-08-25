@@ -8,6 +8,19 @@ export interface ExactHeadTextFile {
   htmlUrl?: string;
 }
 
+export type ExactHeadPathState =
+  | {
+      state: "absent";
+      path: string;
+    }
+  | {
+      state: "present";
+      path: string;
+      sha: string;
+      kind: string;
+      htmlUrl?: string;
+    };
+
 interface GitHubContentsFileResponse {
   type: string;
   path: string;
@@ -53,9 +66,10 @@ function decodeUtf8Base64(content: string): string | null {
   }
 }
 
-export async function fetchExactHeadTextFile(
-  input: FetchExactHeadTextFileInput
-): Promise<ExactHeadTextFile | null> {
+function requestMetadata(input: FetchExactHeadTextFileInput): {
+  apiPath: string;
+  headers: Record<string, string>;
+} {
   if (!isFullCommitSha(input.headSha)) {
     throw new Error("Exact-head file evidence requires a full 40-character commit SHA.");
   }
@@ -70,6 +84,13 @@ export async function fetchExactHeadTextFile(
   const token = input.token ?? process.env.GITHUB_TOKEN;
   if (token) headers.Authorization = `Bearer ${token}`;
 
+  return { apiPath, headers };
+}
+
+async function fetchExactHeadContentsPayload(
+  input: FetchExactHeadTextFileInput
+): Promise<GitHubContentsFileResponse | null> {
+  const { apiPath, headers } = requestMetadata(input);
   const response = await (input.fetchImpl ?? fetch)(`https://api.github.com${apiPath}`, { headers });
   if (response.status === 404) return null;
   if (!response.ok) {
@@ -80,13 +101,48 @@ export async function fetchExactHeadTextFile(
     );
   }
 
-  const payload = await response.json() as GitHubContentsFileResponse;
+  const payload = await response.json() as Partial<GitHubContentsFileResponse>;
+  if (
+    typeof payload.type !== "string"
+    || payload.path !== input.path
+    || typeof payload.sha !== "string"
+    || payload.sha.length === 0
+  ) {
+    throw new Error(`GitHub returned ambiguous exact-head path state for ${input.path}.`);
+  }
+
+  return payload as GitHubContentsFileResponse;
+}
+
+export async function inspectExactHeadPath(
+  input: FetchExactHeadTextFileInput
+): Promise<ExactHeadPathState> {
+  const payload = await fetchExactHeadContentsPayload(input);
+  if (payload === null) {
+    return {
+      state: "absent",
+      path: input.path
+    };
+  }
+
+  return {
+    state: "present",
+    path: payload.path,
+    sha: payload.sha,
+    kind: payload.type,
+    ...(payload.html_url ? { htmlUrl: payload.html_url } : {})
+  };
+}
+
+export async function fetchExactHeadTextFile(
+  input: FetchExactHeadTextFileInput
+): Promise<ExactHeadTextFile | null> {
+  const payload = await fetchExactHeadContentsPayload(input);
+  if (payload === null) return null;
   if (
     payload.type !== "file"
-    || payload.path !== input.path
     || payload.encoding !== "base64"
     || typeof payload.content !== "string"
-    || !payload.sha
   ) {
     return null;
   }
