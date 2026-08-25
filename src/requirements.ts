@@ -4,6 +4,7 @@ const ATX_HEADING = /^(#{1,6})\s+(.+?)\s*#*\s*$/;
 const BOLD_HEADING = /^\s*\*\*(.+?)\*\*\s*$/;
 const PLAIN_SECTION_LABEL = /^\s*([^#*].*?)\s*[:：]\s*$/;
 const INLINE_ACCEPTANCE_LABEL = /^\s*\*\*(acceptance(?: criteria)?|requirements?|definition of done|success criteria|criteria)\s*[.:：]\*\*\s+(.+)$/i;
+const PLAIN_INLINE_ACCEPTANCE_LABEL = /^\s*(acceptance(?: criteria)?|requirements?|definition of done|success criteria|criteria)\s*[:：]\s+(.+)$/i;
 const CHECKBOX = /^\s*[-*+]\s+\[([ xX])\]\s+(.+)$/;
 const LIST_ITEM = /^\s*(?:[-*+]|\d+[.)])\s+(.+)$/;
 const LABELED_CRITERION = /^\s*(?:AC|REQ|CRITERION)[-_ ]?\d+(?:\s*\[[^\]]+\])?\s*[:.)-]\s*(.*)$/i;
@@ -130,18 +131,22 @@ function listRequirement(
   };
 }
 
+function inlineAcceptanceMatch(line: string): RegExpMatchArray | null {
+  return line.match(INLINE_ACCEPTANCE_LABEL) ?? line.match(PLAIN_INLINE_ACCEPTANCE_LABEL);
+}
+
 function extractInlineAcceptance(lines: string[]): Requirement[] {
   const requirements: Requirement[] = [];
 
   for (let index = 0; index < lines.length; index += 1) {
-    const match = lines[index]?.match(INLINE_ACCEPTANCE_LABEL);
+    const match = inlineAcceptanceMatch(lines[index] ?? "");
     if (!match) continue;
 
     const paragraph = [match[2] ?? ""];
     let cursor = index + 1;
     while (cursor < lines.length) {
       const next = lines[cursor] ?? "";
-      if (!next.trim() || parseHeading(next) || INLINE_ACCEPTANCE_LABEL.test(next)) break;
+      if (!next.trim() || parseHeading(next) || inlineAcceptanceMatch(next)) break;
       paragraph.push(next.trim());
       cursor += 1;
     }
