@@ -12,6 +12,7 @@ import {
   findQuantitativePatchMismatchEvidence,
   type PatchFile
 } from "./diff-evidence.js";
+import { inspectExactHeadPath } from "./exact-head-file.js";
 import { GitHubClient } from "./github.js";
 import {
   PRE_FIX_FAILURE_UNPROVEN_REASON,
@@ -23,6 +24,10 @@ import {
   QUANTIFIED_COUNT_UNPROVEN_REASON,
   requiresQuantifiedArtifactCountEvidence
 } from "./quantitative-guard.js";
+import {
+  assessExactHeadPathState,
+  extractExplicitPathStateIntent
+} from "./repository-state-evidence.js";
 import { extractRequirements } from "./requirements.js";
 import type {
   CheckRunSummary,
@@ -211,6 +216,34 @@ function evaluateRequirement(
   };
 }
 
+async function applyExactHeadPathStateEvidence(input: {
+  repository: string;
+  headSha: string;
+  token?: string;
+  result: RequirementResult;
+}): Promise<RequirementResult> {
+  if (input.result.status === "FAILED") return input.result;
+
+  const intent = extractExplicitPathStateIntent(input.result.requirement.text);
+  if (!intent) return input.result;
+
+  try {
+    const state = await inspectExactHeadPath({
+      repository: input.repository,
+      path: intent.path,
+      headSha: input.headSha,
+      ...(input.token ? { token: input.token } : {})
+    });
+    return assessExactHeadPathState(input.result.requirement, intent, state) ?? input.result;
+  } catch {
+    // Exact-head repository-state evidence is optional enrichment. If GitHub
+    // cannot answer this extra path query unambiguously, preserve the existing
+    // conservative assessment rather than manufacturing absence or failing an
+    // otherwise usable verification report.
+    return input.result;
+  }
+}
+
 export async function verifyPullRequest(input: {
   repository: string;
   issueNumber?: number;
@@ -290,26 +323,34 @@ export async function verifyPullRequest(input: {
     })
     .map(guardHistoricalClaim)
     .map(guardQuantifiedClaim);
-  const results = requirements
+  const baseResults = requirements
     .map((requirement) => evaluateRequirement(requirement, files, checks, requiredCheckContexts))
     .map(guardHistoricalRequirement)
-    .map(guardQuantifiedRequirement)
-    .map((result) => {
-      if (result.status !== "UNPROVEN") return result;
+    .map(guardQuantifiedRequirement);
+  const exactHeadResults = await Promise.all(baseResults.map((result) =>
+    applyExactHeadPathStateEvidence({
+      repository: input.repository,
+      headSha: pull.head.sha,
+      ...(input.token ? { token: input.token } : {}),
+      result
+    })
+  ));
+  const results = exactHeadResults.map((result) => {
+    if (result.status !== "UNPROVEN") return result;
 
-      const supportingEvidence = selectTrustedSupportingCommentEvidence(
-        result.requirement,
-        input.prNumber,
-        commentSources
-      );
-      if (supportingEvidence.length === 0) return result;
+    const supportingEvidence = selectTrustedSupportingCommentEvidence(
+      result.requirement,
+      input.prNumber,
+      commentSources
+    );
+    if (supportingEvidence.length === 0) return result;
 
-      return {
-        ...result,
-        reason: `${result.reason} Trusted maintainer comments tied to this PR are shown as supporting evidence only; they do not independently prove every clause.`,
-        evidence: [...result.evidence, ...supportingEvidence]
-      };
-    });
+    return {
+      ...result,
+      reason: `${result.reason} Trusted maintainer comments tied to this PR are shown as supporting evidence only; they do not independently prove every clause.`,
+      evidence: [...result.evidence, ...supportingEvidence]
+    };
+  });
 
   const verdict = results.some((result) => result.status === "FAILED")
     ? "FAILED"
