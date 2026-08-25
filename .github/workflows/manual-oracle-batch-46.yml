@@ -1,0 +1,104 @@
+name: Manual oracle batch 46
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-46.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  login-path-runtime:
+    name: Login PATH runtime oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real login PATH history
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo to-ge-da/hermes-self-hosted \
+            --issue 85 \
+            --pr 109 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/hermes-self-hosted-109.json
+
+      - name: Compare with independent login-session oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(readFileSync('dogfood-results/hermes-self-hosted-109.json', 'utf8')).report;
+
+          if (report.results.length !== 3) {
+            throw new Error(`Expected exactly 3 authoritative acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const once = report.results.find((result) => /new login PATH.*local\/bin.*once/i.test(result.requirement.text));
+          if (!once) throw new Error('Expected new-login PATH uniqueness criterion.');
+          if (once.status === 'PROVEN') {
+            throw new Error('A green shellcheck job or PR prose must not prove the new-login runtime PATH contains ~/.local/bin exactly once.');
+          }
+
+          const idempotent = report.results.find((result) => /re-run bootstrap is idempotent/i.test(result.requirement.text));
+          if (!idempotent) throw new Error('Expected bootstrap idempotence criterion.');
+          if (idempotent.status === 'PROVEN' && !idempotent.evidence.some((item) => /idempot|bootstrap|test|harness/i.test(item.summary))) {
+            throw new Error('Bootstrap idempotence must not be PROVEN from unrelated shellcheck success.');
+          }
+
+          const fallback = report.results.find((result) => /missing .*00-local-bin.*still works.*profile/i.test(result.requirement.text));
+          if (!fallback) throw new Error('Expected missing-profile.d fallback criterion.');
+          if (fallback.status === 'PROVEN') {
+            throw new Error('The missing-00-local-bin.sh fallback requires executed login/profile behavior, not static lint or self-reported PR text.');
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-46
+          path: dogfood-results/hermes-self-hosted-109.json
+          if-no-files-found: error
