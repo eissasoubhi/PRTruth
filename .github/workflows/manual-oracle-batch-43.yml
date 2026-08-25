@@ -1,0 +1,102 @@
+name: Manual oracle batch 43
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-43.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  composite-file-state:
+    name: Composite file-state oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real one-line file-content history
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo alchemy-run/test-alchemy \
+            --issue 110 \
+            --pr 116 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/test-alchemy-116.json
+
+      - name: Compare with independent composite-criterion oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/test-alchemy-116.json', 'utf8')
+          ).report;
+
+          const thanksCriteria = report.results.filter((result) =>
+            /THANKS\.md/i.test(result.requirement.text)
+          );
+
+          if (thanksCriteria.length === 0) {
+            throw new Error('Expected the inline THANKS.md acceptance criterion to be extracted.');
+          }
+
+          if (thanksCriteria.some((result) => result.status === 'PROVEN')) {
+            throw new Error(
+              'Exact-head file presence must not prove the stronger inline criterion, which also requires exact content and an exclusive one-file change.'
+            );
+          }
+
+          if (report.verdict === 'PROVEN') {
+            throw new Error('The composite file/content/process contract must not receive a global PROVEN verdict from file presence alone.');
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            criteria: thanksCriteria.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-43
+          path: dogfood-results/test-alchemy-116.json
+          if-no-files-found: error
