@@ -1,0 +1,97 @@
+name: Manual oracle batch 45
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-45.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  generated-docs-composite:
+    name: Generated docs composite oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real generated-docs history
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo randomparity/hmc-mcp \
+            --issue 476 \
+            --pr 483 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/hmc-mcp-483.json
+
+      - name: Compare with independent generated-docs oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(readFileSync('dogfood-results/hmc-mcp-483.json', 'utf8')).report;
+
+          if (report.results.length !== 7) {
+            throw new Error(`Expected exactly 7 authoritative acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const readme = report.results.find((result) => /README table is removed and replaced with a working pointer/i.test(result.requirement.text));
+          if (!readme) throw new Error('Expected README replacement criterion.');
+          if (readme.status === 'PROVEN') {
+            throw new Error('README file presence or generic green CI must not prove the composite table-removal + working-pointer criterion.');
+          }
+
+          const raise = report.results.find((result) => /generator raises rather than emitting a degraded document/i.test(result.requirement.text));
+          if (!raise) throw new Error('Expected generator fail-closed criterion.');
+          if (raise.status === 'PROVEN' && !raise.evidence.some((item) => /test|tool-docs|generator/i.test(item.summary))) {
+            throw new Error('Generator fail-closed semantics must not be PROVEN without matching executable evidence.');
+          }
+
+          const decision = report.results.find((result) => /147-vs-148 decision/i.test(result.requirement.text));
+          if (!decision) throw new Error('Expected 147-vs-148 decision criterion.');
+          if (decision.status === 'PROVEN' && !decision.evidence.some((item) => /147|148|tool-docs|generator/i.test(item.summary))) {
+            throw new Error('The quantitative 147-vs-148 criterion must not be PROVEN from unrelated green CI.');
+          }
+
+          console.log(JSON.stringify({ verdict: report.verdict, criteria: report.results.map((r) => ({ text: r.requirement.text, status: r.status, reason: r.reason })) }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-45
+          path: dogfood-results/hmc-mcp-483.json
+          if-no-files-found: error
