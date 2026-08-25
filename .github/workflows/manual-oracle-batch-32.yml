@@ -51,7 +51,7 @@ jobs:
             --policy report-only \
             --format json \
             --output oracle-results/cfgms-3470-3477.json
-      - name: Print and guard requirement set
+      - name: Assert workflow-dispatch evidence stays scoped
         run: |
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
@@ -63,8 +63,20 @@ jobs:
           for (const result of results) {
             console.log(`${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing>'}`);
           }
+
           if (results.length !== 4) {
             throw new Error(`Expected exactly 4 acceptance criteria from issue #3470, observed ${results.length}`);
+          }
+
+          const expected = ['UNPROVEN', 'PROVEN', 'PROVEN', 'UNPROVEN'];
+          for (let index = 0; index < expected.length; index += 1) {
+            if (results[index]?.status !== expected[index]) {
+              throw new Error(`Requirement ${index + 1}: expected ${expected[index]}, observed ${results[index]?.status ?? '<missing>'}`);
+            }
+          }
+
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Source-only and broad no-hidden-test assertions must not become globally PROVEN from execution evidence alone');
           }
           NODE
       - name: Upload report
