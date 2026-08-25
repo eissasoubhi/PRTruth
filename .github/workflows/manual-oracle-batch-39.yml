@@ -1,0 +1,89 @@
+name: Manual oracle batch 39
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/manual-oracle-batch-39.yml'
+      - 'src/**'
+      - 'test/**'
+      - 'docs/manual-oracle-batch-39.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  actions: read
+  checks: read
+  pull-requests: read
+
+jobs:
+  public-oracle:
+    runs-on: ubuntu-24.04
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: 'false'
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout PRTruth
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+      - name: Build current PRTruth source
+        run: pnpm build
+      - name: Run closed fork PR oracle
+        run: |
+          mkdir -p oracle-results
+          node dist/cli.js verify \
+            --repo Xconfess/Xconfess \
+            --issue 1729 \
+            --pr 1781 \
+            --policy report-only \
+            --format json \
+            --output oracle-results/xconfess-1729-1781.json
+      - name: Assert self-reported validation stays non-probative
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync('oracle-results/xconfess-1729-1781.json', 'utf8'));
+          const report = payload.report ?? payload;
+          const results = report.results ?? [];
+          console.log(`verdict=${report.verdict}`);
+          console.log(`requirements=${results.length}`);
+          for (const result of results) {
+            console.log(`${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing>'}`);
+          }
+
+          if (results.length !== 2) {
+            throw new Error(`Expected exactly 2 acceptance criteria from issue #1729, observed ${results.length}`);
+          }
+
+          const requestId = results.find((result) => /request ID when present/i.test(result.requirement?.text ?? ''));
+          const compact = results.find((result) => /compact on mobile/i.test(result.requirement?.text ?? ''));
+          if (!requestId || !compact) {
+            throw new Error('Expected both explicit issue acceptance criteria');
+          }
+          if (requestId.status === 'PROVEN' || compact.status === 'PROVEN') {
+            throw new Error('Closed fork PR author prose must not prove UI behavior without authoritative exact-head execution evidence');
+          }
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Overall report must not become PROVEN from self-reported local validation or closed PR state');
+          }
+          NODE
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: prtruth-manual-oracle-batch-39
+          path: oracle-results/*.json
