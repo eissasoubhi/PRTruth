@@ -52,7 +52,7 @@ jobs:
             --policy report-only \
             --format json \
             --output oracle-results/audioblocks-236-347.json
-      - name: Assert merge and self-report do not over-prove lint criteria
+      - name: Assert checked claims cannot override exact-head contradictions
         run: |
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
@@ -69,19 +69,23 @@ jobs:
             throw new Error(`Expected exactly 5 acceptance criteria from issue #236, observed ${results.length}`);
           }
 
-          const lintPass = results.find((result) => /npm run lint.*passes consistently/i.test(result.requirement?.text ?? ''));
-          const ciLint = results.find((result) => /CI lint step uses the same config/i.test(result.requirement?.text ?? ''));
-          if (!lintPass || !ciLint) {
-            throw new Error('Expected both lint-execution acceptance criteria');
+          const patterns = [
+            /Only `?eslint\.config\.mjs`? remains/i,
+            /All rules from the legacy config are preserved/i,
+            /npm run lint.*passes consistently/i,
+            /No duplicate or conflicting rules/i,
+            /CI lint step uses the same config/i,
+          ];
+          for (const pattern of patterns) {
+            const result = results.find((item) => pattern.test(item.requirement?.text ?? ''));
+            if (!result) throw new Error(`Missing expected acceptance criterion: ${pattern}`);
+            if (result.status === 'PROVEN') {
+              throw new Error(`Exact-head contradictions/self-report must not produce PROVEN: ${result.requirement?.text}`);
+            }
           }
-          if (lintPass.status === 'PROVEN') {
-            throw new Error('Author-reported local npm run lint must not become authoritative exact-head execution proof');
-          }
-          if (ciLint.status === 'PROVEN') {
-            throw new Error('A nonexistent CI lint step must never be treated as PROVEN');
-          }
+
           if (report.verdict === 'PROVEN') {
-            throw new Error('Merged PR state and partial evidence must not make the overall report PROVEN');
+            throw new Error('Merged PR state and checked boxes must not make the overall report PROVEN');
           }
           NODE
       - name: Upload report
