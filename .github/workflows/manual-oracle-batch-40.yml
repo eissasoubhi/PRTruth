@@ -1,0 +1,96 @@
+name: Manual oracle batch 40
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/manual-oracle-batch-40.yml'
+      - 'src/**'
+      - 'test/**'
+      - 'docs/manual-oracle-batch-40.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  actions: read
+  checks: read
+  pull-requests: read
+
+jobs:
+  public-oracle:
+    runs-on: ubuntu-24.04
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: 'false'
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout PRTruth
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+      - name: Build current PRTruth source
+        run: pnpm build
+      - name: Run ESLint consolidation oracle
+        run: |
+          mkdir -p oracle-results
+          node dist/cli.js verify \
+            --repo AudioBitsStellar/AudioBlocks_Frontend_v1 \
+            --issue 236 \
+            --pr 347 \
+            --policy report-only \
+            --format json \
+            --output oracle-results/audioblocks-236-347.json
+      - name: Assert checked claims cannot override exact-head contradictions
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync('oracle-results/audioblocks-236-347.json', 'utf8'));
+          const report = payload.report ?? payload;
+          const results = report.results ?? [];
+          console.log(`verdict=${report.verdict}`);
+          console.log(`requirements=${results.length}`);
+          for (const result of results) {
+            console.log(`${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing>'}`);
+          }
+
+          if (results.length !== 5) {
+            throw new Error(`Expected exactly 5 acceptance criteria from issue #236, observed ${results.length}`);
+          }
+
+          const patterns = [
+            /Only `?eslint\.config\.mjs`? remains/i,
+            /All rules from the legacy config are preserved/i,
+            /npm run lint.*passes consistently/i,
+            /No duplicate or conflicting rules/i,
+            /CI lint step uses the same config/i,
+          ];
+          for (const pattern of patterns) {
+            const result = results.find((item) => pattern.test(item.requirement?.text ?? ''));
+            if (!result) throw new Error(`Missing expected acceptance criterion: ${pattern}`);
+            if (result.status === 'PROVEN') {
+              throw new Error(`Exact-head contradictions/self-report must not produce PROVEN: ${result.requirement?.text}`);
+            }
+          }
+
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Merged PR state and checked boxes must not make the overall report PROVEN');
+          }
+          NODE
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: prtruth-manual-oracle-batch-40
+          path: oracle-results/*.json
