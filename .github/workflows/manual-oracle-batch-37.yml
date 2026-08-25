@@ -1,0 +1,85 @@
+name: Manual oracle batch 37
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/manual-oracle-batch-37.yml'
+      - 'src/**'
+      - 'test/**'
+      - 'docs/manual-oracle-batch-37.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  actions: read
+  checks: read
+  pull-requests: read
+
+jobs:
+  public-oracle:
+    runs-on: ubuntu-24.04
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: 'false'
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout PRTruth
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+      - name: Build current PRTruth source
+        run: pnpm build
+      - name: Run live-rollout oracle
+        run: |
+          mkdir -p oracle-results
+          node dist/cli.js verify \
+            --repo ozand/eeebot-ops-dashboard \
+            --issue 59 \
+            --pr 65 \
+            --policy report-only \
+            --format json \
+            --output oracle-results/eeebot-59-65.json
+      - name: Assert trusted prose does not over-prove composite rollout criterion
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync('oracle-results/eeebot-59-65.json', 'utf8'));
+          const report = payload.report ?? payload;
+          const results = report.results ?? [];
+          console.log(`verdict=${report.verdict}`);
+          console.log(`requirements=${results.length}`);
+          for (const result of results) {
+            console.log(`${result.status.padEnd(8)} ${result.requirement?.text ?? '<missing>'}`);
+          }
+
+          if (results.length !== 4) {
+            throw new Error(`Expected exactly 4 acceptance criteria from issue #59, observed ${results.length}`);
+          }
+
+          const rollout = results.find((result) => /Tests green; merged; rolled out; next live partial\/skip occurrence quoted/i.test(result.requirement?.text ?? ''));
+          if (!rollout) {
+            throw new Error('Expected rollout/live-occurrence acceptance criterion to be extracted');
+          }
+          if (rollout.status !== 'UNPROVEN') {
+            throw new Error(`Composite lifecycle criterion must remain UNPROVEN without authoritative test execution evidence; observed ${rollout.status}`);
+          }
+          NODE
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: prtruth-manual-oracle-batch-37
+          path: oracle-results/*.json
