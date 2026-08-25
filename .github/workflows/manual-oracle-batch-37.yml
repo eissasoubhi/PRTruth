@@ -52,7 +52,7 @@ jobs:
             --policy report-only \
             --format json \
             --output oracle-results/eeebot-59-65.json
-      - name: Assert rollout and live-occurrence evidence remain fail-closed
+      - name: Assert maintainer live-verification evidence is recognized
         run: |
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
@@ -73,11 +73,8 @@ jobs:
           if (!rollout) {
             throw new Error('Expected rollout/live-occurrence acceptance criterion to be extracted');
           }
-          if (rollout.status === 'PROVEN') {
-            throw new Error('Merged state and PR-local tests must not prove rollout plus next-live-occurrence evidence');
-          }
-          if (report.verdict === 'PROVEN') {
-            throw new Error('Overall report must remain fail-closed while rollout/live occurrence lacks direct observable evidence');
+          if (rollout.status !== 'PROVEN') {
+            throw new Error(`False-negative regression: trusted maintainer comment records merge 12c4c7c, rollout live since 03:40 UTC, and quotes the requested live rows, but PRTruth returned ${rollout.status}`);
           }
           NODE
       - name: Upload report
