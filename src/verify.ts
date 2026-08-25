@@ -3,7 +3,9 @@ import { assessGenericCiSuccess } from "./ci-evidence.js";
 import { extractCompletionClaims } from "./claims.js";
 import {
   selectTrustedCommentRequirements,
-  shouldInspectIssueComments
+  selectTrustedSupportingCommentEvidence,
+  shouldInspectIssueComments,
+  shouldInspectSupportingComments
 } from "./comment-requirements.js";
 import {
   findPatchCandidateEvidence,
@@ -225,9 +227,17 @@ export async function verifyPullRequest(input: {
     discoverInstructionFiles(client, input.repository)
   ]);
   const issueBody = issue.body ?? "";
-  const issueComments = shouldInspectIssueComments(issueBody)
+  const bodyRequirements = extractRequirements(issueBody);
+  const shouldFetchIssueComments = shouldInspectIssueComments(issueBody)
+    || shouldInspectSupportingComments(bodyRequirements);
+  const issueComments = shouldFetchIssueComments
     ? await client.getIssueComments(input.repository, issueNumber)
     : [];
+  const commentSources = issueComments.map((comment) => ({
+    body: comment.body,
+    authorAssociation: comment.author_association,
+    ...(comment.html_url ? { htmlUrl: comment.html_url } : {})
+  }));
 
   const [checkRuns, workflowStepChecks, requiredCheckContexts] = await Promise.all([
     client.getCheckRuns(input.repository, pull.head.sha),
@@ -254,16 +264,10 @@ export async function verifyPullRequest(input: {
     }))
   ];
 
-  const commentRequirements = selectTrustedCommentRequirements(
-    issueBody,
-    issueComments.map((comment) => ({
-      body: comment.body,
-      authorAssociation: comment.author_association
-    }))
-  );
+  const commentRequirements = selectTrustedCommentRequirements(issueBody, commentSources);
   const requirements = commentRequirements.length > 0
     ? commentRequirements
-    : extractRequirements(issueBody);
+    : bodyRequirements;
   const claims = extractCompletionClaims(pull.body ?? "");
   const changedFiles = files.map((file) => file.filename);
   const claimResults = buildClaimResults(claims, checks, changedFiles)
@@ -289,7 +293,23 @@ export async function verifyPullRequest(input: {
   const results = requirements
     .map((requirement) => evaluateRequirement(requirement, files, checks, requiredCheckContexts))
     .map(guardHistoricalRequirement)
-    .map(guardQuantifiedRequirement);
+    .map(guardQuantifiedRequirement)
+    .map((result) => {
+      if (result.status !== "UNPROVEN") return result;
+
+      const supportingEvidence = selectTrustedSupportingCommentEvidence(
+        result.requirement,
+        input.prNumber,
+        commentSources
+      );
+      if (supportingEvidence.length === 0) return result;
+
+      return {
+        ...result,
+        reason: `${result.reason} Trusted maintainer comments tied to this PR are shown as supporting evidence only; they do not independently prove every clause.`,
+        evidence: [...result.evidence, ...supportingEvidence]
+      };
+    });
 
   const verdict = results.some((result) => result.status === "FAILED")
     ? "FAILED"
