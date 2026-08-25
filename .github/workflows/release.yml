@@ -87,6 +87,32 @@ jobs:
               core.setOutput('exists', 'false');
             }
 
+      - name: Validate automatic release source
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.existing.outputs.exists != 'true'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const response = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner,
+              repo,
+              commit_sha: context.sha,
+            });
+            const mergedIntoMain = response.data.filter((pull) =>
+              pull.merged_at &&
+              pull.base.ref === 'main' &&
+              pull.merge_commit_sha === context.sha
+            );
+
+            if (mergedIntoMain.length !== 1) {
+              core.setFailed(
+                `Automatic release creation requires exactly one merged pull request into main for ${context.sha}; found ${mergedIntoMain.length}.`
+              );
+              return;
+            }
+
+            core.info(`Automatic release source verified from merged PR #${mergedIntoMain[0].number}.`);
+
       - name: Install dependencies
         if: steps.existing.outputs.exists != 'true'
         run: |
