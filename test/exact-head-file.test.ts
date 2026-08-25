@@ -80,6 +80,27 @@ describe("exact-head repository file state", () => {
     })).resolves.toBeNull();
   });
 
+  it("treats the GitHub directory-array response as present, never absent", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse([
+      {
+        type: "file",
+        path: "config/example.json",
+        sha: "child-blob-sha"
+      }
+    ])) as typeof fetch;
+
+    await expect(inspectExactHeadPath({
+      repository: "example/repo",
+      path: "config",
+      headSha: HEAD_SHA,
+      fetchImpl
+    })).resolves.toEqual({
+      state: "present",
+      path: "config",
+      kind: "dir"
+    });
+  });
+
   it("returns null from the text reader when the file does not exist at the exact head", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ message: "Not Found" }, 404)) as typeof fetch;
 
