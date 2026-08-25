@@ -94,6 +94,19 @@ describe("workflow checkout hardening", () => {
     expect(content).toContain('if [[ "${GITHUB_REF}" != "refs/heads/main" ]]');
   });
 
+  it("requires an automatic new release on main to come from exactly one merged PR", () => {
+    const content = workflow(".github/workflows/release.yml");
+
+    expect(content).toContain("Validate automatic release source");
+    expect(content).toContain("github.event_name == 'push' && github.ref == 'refs/heads/main'");
+    expect(content).toContain("steps.existing.outputs.exists != 'true'");
+    expect(content).toContain("listPullRequestsAssociatedWithCommit");
+    expect(content).toContain("pull.merged_at");
+    expect(content).toContain("pull.base.ref === 'main'");
+    expect(content).toContain("pull.merge_commit_sha === context.sha");
+    expect(content).toContain("mergedIntoMain.length !== 1");
+  });
+
   it("forces the dogfood package smoke to the public npm registry and cleans its temp directory", () => {
     const content = workflow(".github/workflows/dogfood.yml");
 
