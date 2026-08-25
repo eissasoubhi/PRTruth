@@ -7,6 +7,7 @@ const INLINE_ACCEPTANCE_LABEL = /^\s*\*\*(acceptance(?: criteria)?|requirements?
 const CHECKBOX = /^\s*[-*+]\s+\[([ xX])\]\s+(.+)$/;
 const LIST_ITEM = /^\s*(?:[-*+]|\d+[.)])\s+(.+)$/;
 const LABELED_CRITERION = /^\s*(?:AC|REQ|CRITERION)[-_ ]?\d+(?:\s*\[[^\]]+\])?\s*[:.)-]\s*(.*)$/i;
+const EXPLICIT_ACCEPTANCE_SECTION = /^(?:acceptance(?: criteria)?|definition of done|success criteria|criteria)(?:\s*\([^)]*\))?$/i;
 const ACCEPTANCE_SECTION = /^(?:acceptance(?: criteria)?|requirements?|definition of done|success criteria|criteria)(?:\s*\([^)]*\))?$/i;
 const EXPECTED_SECTION = /^(?:expected behavior|desired behavior|expected result|desired result)$/i;
 const CHANGE_SECTION = /^(?:recommended change|proposed change)(?:\s*\([^)]*\))?$/i;
@@ -227,7 +228,10 @@ function extractListSections(
   return requirements;
 }
 
-function extractLabeledAcceptanceCriteria(lines: string[]): Requirement[] {
+function extractLabeledAcceptanceCriteria(
+  lines: string[],
+  sectionPattern = ACCEPTANCE_SECTION
+): Requirement[] {
   let section: MarkdownHeading | null = null;
   let current: string[] = [];
   const requirements: Requirement[] = [];
@@ -250,7 +254,7 @@ function extractLabeledAcceptanceCriteria(lines: string[]): Requirement[] {
         flush();
         section = null;
       }
-      if (ACCEPTANCE_SECTION.test(heading.text)) {
+      if (sectionPattern.test(heading.text)) {
         flush();
         section = heading;
       }
@@ -281,6 +285,15 @@ function extractLabeledAcceptanceCriteria(lines: string[]): Requirement[] {
 function extractAcceptanceSections(lines: string[]): Requirement[] {
   const inline = extractInlineAcceptance(lines);
   if (inline.length > 0) return inline;
+
+  const explicitLabeled = extractLabeledAcceptanceCriteria(lines, EXPLICIT_ACCEPTANCE_SECTION);
+  if (explicitLabeled.length > 0) return explicitLabeled;
+  const explicitList = extractListSections(
+    lines,
+    EXPLICIT_ACCEPTANCE_SECTION,
+    "acceptance-section"
+  );
+  if (explicitList.length > 0) return explicitList;
 
   const labeled = extractLabeledAcceptanceCriteria(lines);
   if (labeled.length > 0) return labeled;
