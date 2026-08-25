@@ -16,8 +16,8 @@ export type ExactHeadPathState =
   | {
       state: "present";
       path: string;
-      sha: string;
       kind: string;
+      sha?: string;
       htmlUrl?: string;
     };
 
@@ -25,6 +25,15 @@ interface GitHubContentsFileResponse {
   type: string;
   path: string;
   sha: string;
+  encoding?: string;
+  content?: string;
+  html_url?: string;
+}
+
+interface ExactHeadContentsPayload {
+  type: string;
+  path: string;
+  sha?: string;
   encoding?: string;
   content?: string;
   html_url?: string;
@@ -89,7 +98,7 @@ function requestMetadata(input: FetchExactHeadTextFileInput): {
 
 async function fetchExactHeadContentsPayload(
   input: FetchExactHeadTextFileInput
-): Promise<GitHubContentsFileResponse | null> {
+): Promise<ExactHeadContentsPayload | null> {
   const { apiPath, headers } = requestMetadata(input);
   const response = await (input.fetchImpl ?? fetch)(`https://api.github.com${apiPath}`, { headers });
   if (response.status === 404) return null;
@@ -101,17 +110,29 @@ async function fetchExactHeadContentsPayload(
     );
   }
 
-  const payload = await response.json() as Partial<GitHubContentsFileResponse>;
+  const payload = await response.json() as unknown;
+  if (Array.isArray(payload)) {
+    return {
+      type: "dir",
+      path: input.path
+    };
+  }
+
+  if (!payload || typeof payload !== "object") {
+    throw new Error(`GitHub returned ambiguous exact-head path state for ${input.path}.`);
+  }
+
+  const candidate = payload as Partial<GitHubContentsFileResponse>;
   if (
-    typeof payload.type !== "string"
-    || payload.path !== input.path
-    || typeof payload.sha !== "string"
-    || payload.sha.length === 0
+    typeof candidate.type !== "string"
+    || candidate.path !== input.path
+    || typeof candidate.sha !== "string"
+    || candidate.sha.length === 0
   ) {
     throw new Error(`GitHub returned ambiguous exact-head path state for ${input.path}.`);
   }
 
-  return payload as GitHubContentsFileResponse;
+  return candidate as ExactHeadContentsPayload;
 }
 
 export async function inspectExactHeadPath(
@@ -128,8 +149,8 @@ export async function inspectExactHeadPath(
   return {
     state: "present",
     path: payload.path,
-    sha: payload.sha,
     kind: payload.type,
+    ...(payload.sha ? { sha: payload.sha } : {}),
     ...(payload.html_url ? { htmlUrl: payload.html_url } : {})
   };
 }
@@ -141,6 +162,7 @@ export async function fetchExactHeadTextFile(
   if (payload === null) return null;
   if (
     payload.type !== "file"
+    || typeof payload.sha !== "string"
     || payload.encoding !== "base64"
     || typeof payload.content !== "string"
   ) {
