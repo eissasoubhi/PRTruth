@@ -15,10 +15,16 @@ function looksLikeRepositoryPath(value: string): boolean {
     && (value.includes("/") || /\.[a-z0-9_-]+$/i.test(value));
 }
 
+function hasCompositeRequirementLanguage(text: string): boolean {
+  const withoutCode = text.replace(/`[^`\n]+`/g, "PATH");
+  return /[;,]|\b(?:and|or|plus|while|without|also|as well as)\b/i.test(withoutCode);
+}
+
 export function extractExplicitPathStateIntent(text: string): ExplicitPathStateIntent | null {
   if (!/\b(?:remove|removed|delete|deleted|drop|dropped|no longer exists?|must not exist|absent)\b/i.test(text)) {
     return null;
   }
+  if (hasCompositeRequirementLanguage(text)) return null;
 
   const paths = [...text.matchAll(/`([^`\n]+)`/g)]
     .map((match) => match[1] ?? "")
