@@ -12,6 +12,7 @@ interface GitHubIssueCommentResponse {
   id: number;
   body: string | null;
   author_association: string;
+  html_url?: string;
 }
 
 interface GitHubPullResponse {
