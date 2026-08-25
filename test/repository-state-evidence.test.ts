@@ -23,6 +23,14 @@ describe("explicit exact-head repository path-state evidence", () => {
       path: ".github/workflows/docs.yml",
       expected: "absent"
     });
+    expect(extractExplicitPathStateIntent("`legacy.yml` no longer exists.")).toEqual({
+      path: "legacy.yml",
+      expected: "absent"
+    });
+    expect(extractExplicitPathStateIntent("`legacy.yml` must not exist.")).toEqual({
+      path: "legacy.yml",
+      expected: "absent"
+    });
   });
 
   it("extracts one explicit repository path from a single-clause existence requirement", () => {
