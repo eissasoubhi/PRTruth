@@ -45,7 +45,12 @@ function encodeRepositoryPath(path: string): string {
 function decodeUtf8Base64(content: string): string | null {
   const bytes = Buffer.from(content.replace(/\s+/g, ""), "base64");
   if (bytes.includes(0)) return null;
-  return bytes.toString("utf8");
+
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchExactHeadTextFile(
