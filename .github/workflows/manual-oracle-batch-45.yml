@@ -73,7 +73,7 @@ jobs:
             throw new Error('README file presence or generic green CI must not prove the composite table-removal + working-pointer criterion.');
           }
 
-          const raise = report.results.find((result) => /generator raises rather than emitting a degraded document/i.test(result.requirement.text));
+          const raise = report.results.find((result) => /generator.*raises.*degraded document/i.test(result.requirement.text));
           if (!raise) throw new Error('Expected generator fail-closed criterion.');
           if (raise.status === 'PROVEN' && !raise.evidence.some((item) => /test|tool-docs|generator/i.test(item.summary))) {
             throw new Error('Generator fail-closed semantics must not be PROVEN without matching executable evidence.');
