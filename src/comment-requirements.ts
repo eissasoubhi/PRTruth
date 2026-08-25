@@ -43,9 +43,7 @@ export function shouldInspectIssueComments(issueBody: string): boolean {
 }
 
 export function shouldInspectSupportingComments(requirements: Requirement[]): boolean {
-  return requirements.some((requirement) =>
-    LIFECYCLE_CONCEPTS.some((pattern) => pattern.test(requirement.text))
-  );
+  return requirements.some((requirement) => POST_DELIVERY_LANGUAGE.test(requirement.text));
 }
 
 export function selectTrustedCommentRequirements(
