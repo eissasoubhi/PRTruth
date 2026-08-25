@@ -29,11 +29,13 @@ export function extractExplicitPathStateIntent(text: string): ExplicitPathStateI
 
   if (paths.length !== 1) return null;
 
-  const absent = /\b(?:remove|removed|delete|deleted|drop|dropped|no longer exists?|must not exist|absent)\b/i.test(text);
-  const present = /\b(?:exists?|is present)\b/i.test(text);
-  if (absent === present) return null;
-
-  return { path: paths[0]!, expected: absent ? "absent" : "present" };
+  if (/\b(?:remove|removed|delete|deleted|drop|dropped|no longer exists?|must not exist|absent)\b/i.test(text)) {
+    return { path: paths[0]!, expected: "absent" };
+  }
+  if (/\b(?:exists?|is present)\b/i.test(text)) {
+    return { path: paths[0]!, expected: "present" };
+  }
+  return null;
 }
 
 export function assessExactHeadPathState(
