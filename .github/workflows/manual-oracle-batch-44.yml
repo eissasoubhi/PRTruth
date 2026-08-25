@@ -1,0 +1,128 @@
+name: Manual oracle batch 44
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-44.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  exact-path-contradiction:
+    name: Exact path contradiction oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real wrong-path delivery history
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo tanaabased/big-test-bucket \
+            --issue 222 \
+            --pr 227 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/big-test-bucket-227.json
+
+      - name: Compare with independent exact-path oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/big-test-bucket-227.json', 'utf8')
+          ).report;
+
+          if (report.results.length !== 3) {
+            throw new Error(`Expected exactly 3 authoritative acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const rootPath = report.results.find((result) =>
+            /`?HAIKU\.md`? exists at the repository root/i.test(result.requirement.text)
+          );
+          if (!rootPath) {
+            throw new Error('Expected the explicit root HAIKU.md existence criterion.');
+          }
+          if (rootPath.status !== 'FAILED') {
+            throw new Error(
+              `Expected FAILED because HAIKU.md is absent at the exact PR head root; received ${rootPath.status}.`
+            );
+          }
+
+          const threeLine = report.results.find((result) =>
+            /exactly one three-line haiku/i.test(result.requirement.text)
+          );
+          if (!threeLine) {
+            throw new Error('Expected the exact three-line-content criterion.');
+          }
+          if (threeLine.status === 'PROVEN') {
+            throw new Error(
+              'A three-line file under a different path, plus PR prose, must not prove the requested root-file content criterion.'
+            );
+          }
+
+          const semantic = report.results.find((result) =>
+            /conveys frustration/i.test(result.requirement.text)
+          );
+          if (!semantic) {
+            throw new Error('Expected the semantic frustration criterion.');
+          }
+          if (semantic.status === 'PROVEN') {
+            throw new Error(
+              'PR prose or a different-path poem must not deterministically prove the semantic content requirement.'
+            );
+          }
+
+          if (report.verdict === 'PROVEN') {
+            throw new Error('A closed, unmerged wrong-path delivery must not receive a global PROVEN verdict.');
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-44
+          path: dogfood-results/big-test-bucket-227.json
+          if-no-files-found: error
