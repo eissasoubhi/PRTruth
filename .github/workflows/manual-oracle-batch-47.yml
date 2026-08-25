@@ -1,0 +1,109 @@
+name: Manual oracle batch 47
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-47.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  scope-map-history:
+    name: Scope-map historical integrity oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real scope-map history
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo heavy-duty/crew \
+            --issue 500 \
+            --pr 513 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/heavy-duty-crew-513.json
+
+      - name: Compare with independent historical-integrity oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(readFileSync('dogfood-results/heavy-duty-crew-513.json', 'utf8')).report;
+
+          if (report.results.length !== 4) {
+            throw new Error(`Expected exactly 4 authoritative acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const coverage = report.results.find((result) => /every tracked path.*scope row.*allow-list/i.test(result.requirement.text));
+          if (!coverage) throw new Error('Expected tracked-path scope coverage criterion.');
+
+          const failingFixture = report.results.find((result) => /guard fails.*unmatched path.*names it/i.test(result.requirement.text));
+          if (!failingFixture) throw new Error('Expected unmatched-path failure-and-name criterion.');
+
+          const allowReason = report.results.find((result) => /allow-list carries a reason/i.test(result.requirement.text));
+          if (!allowReason) throw new Error('Expected allow-list reason criterion.');
+
+          const unchanged = report.results.find((result) => /existing rows are unchanged.*same scope/i.test(result.requirement.text));
+          if (!unchanged) throw new Error('Expected historical existing-row preservation criterion.');
+          if (unchanged.status === 'PROVEN') {
+            throw new Error('Current-head green checks or PR prose must not prove a base-to-head historical mapping invariant without explicit comparison evidence.');
+          }
+
+          if (allowReason.status === 'PROVEN' && !allowReason.evidence.some((item) => /allow|reason|scope-coverage/i.test(item.summary))) {
+            throw new Error('Allow-list reason criterion must not be PROVEN from unrelated generic CI.');
+          }
+
+          if (failingFixture.status === 'PROVEN' && !failingFixture.evidence.some((item) => /scope|coverage|fixture|test|unmatched/i.test(item.summary))) {
+            throw new Error('Mutation/fixture behavior must not be PROVEN from unrelated generic CI.');
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-47
+          path: dogfood-results/heavy-duty-crew-513.json
+          if-no-files-found: error
