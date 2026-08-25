@@ -70,7 +70,7 @@ jobs:
           }
 
           const docs = results.find((result) => /Docs:\s*N\/A|Story G owns/i.test(result.requirement?.text ?? ''));
-          const fullSuite = results.find((result) => /make test-complete passes/i.test(result.requirement?.text ?? ''));
+          const fullSuite = results.find((result) => /make test-complete.*passes/i.test(result.requirement?.text ?? ''));
           if (!docs || !fullSuite) {
             throw new Error('Expected both delegated-documentation and make test-complete criteria to be extracted');
           }
