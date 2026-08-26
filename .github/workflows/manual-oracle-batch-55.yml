@@ -1,0 +1,125 @@
+name: Manual oracle batch 55
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-55.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  source-provenance:
+    name: Tokyo source-provenance oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real source-reconciliation history
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo nurockplayer/tokyo-mogu-mogu \
+            --issue 322 \
+            --pr 332 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/tokyo-mogu-mogu-332.json
+
+      - name: Compare with independent source-provenance oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(readFileSync('dogfood-results/tokyo-mogu-mogu-332.json', 'utf8')).report;
+
+          if (report.results.length !== 6) {
+            throw new Error(`Expected exactly 6 authoritative acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const generated = report.results.find((result) => /regenerated from its source\/snapshot path/i.test(result.requirement.text));
+          const provenance = report.results.find((result) => /Provenance and .*needs_confirmation.* semantics remain honest/i.test(result.requirement.text));
+          const validation = report.results.find((result) => /Canonical validation passes/i.test(result.requirement.text));
+
+          if (!generated || !provenance || !validation) {
+            throw new Error('Expected source-regeneration, provenance-semantics, and canonical-validation criteria to be extracted.');
+          }
+
+          // Independent inspection of issue #322, PR #332 and exact-head checks
+          // shows a deliberately conservative case. The exact head has generic
+          // successful Quality Gates / merge-gate / browser-smoke jobs, while
+          // the PR prose reports two consecutive generator runs and first-party
+          // source reconciliation. Current green CI does not by itself prove the
+          // historical process claim that generated output was regenerated rather
+          // than manually patched.
+          if (generated.status === 'PROVEN') {
+            throw new Error('Historical source-regeneration process must not be PROVEN from current-head green CI or PR prose alone.');
+          }
+
+          // Preserving honest source/provenance semantics is stronger than simply
+          // having a green build/test lane; it requires direct evidence about the
+          // represented provenance state rather than a broad quality gate.
+          if (provenance.status === 'PROVEN') {
+            throw new Error('Provenance-semantics criterion must not be PROVEN from broad green CI alone.');
+          }
+
+          // The upstream does not expose a check/step that is specifically named
+          // canonical validation. A generic `Quality Gates` success is therefore
+          // insufficient to claim that this exact criterion was executed. Keep
+          // the result fail-closed until directly matching evidence is observable.
+          if (validation.status === 'PROVEN') {
+            throw new Error('Canonical validation must not be PROVEN from a generic Quality Gates job alone.');
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            selected: [generated, provenance, validation].map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            })),
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-55
+          path: dogfood-results/tokyo-mogu-mogu-332.json
+          if-no-files-found: error
