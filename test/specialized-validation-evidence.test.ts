@@ -28,7 +28,7 @@ function provenRequirement(text: string): RequirementResult {
 }
 
 describe("specialized validation evidence guard", () => {
-  it("does not let generic green tests prove property tests when the exact lane is skipped", () => {
+  it("does not let generic green tests prove property tests without direct property evidence", () => {
     const result = guardSpecializedValidationClaim(
       provenClaim("Property tests pass with deterministic seeds and shrinking"),
       [
@@ -38,27 +38,43 @@ describe("specialized validation evidence guard", () => {
     );
 
     expect(result.status).toBe("UNPROVEN");
-    expect(result.reason).toContain("directly matching validation lane");
+    expect(result.reason).toContain("property/fuzz testing");
   });
 
-  it("does not let generic green tests prove resilience tests when the exact lane is skipped", () => {
+  it("accepts a property-test claim when a directly matching property step succeeds", () => {
     const result = guardSpecializedValidationClaim(
-      provenClaim("Resilience tests pass, including fault-injection scenarios"),
+      provenClaim("Property tests pass with deterministic seeds and shrinking"),
       [
-        check("Core tests", "success"),
-        check("Resilience fault injection", "skipped")
+        check("Property and fuzz testing", "skipped"),
+        check("Core CI / Run property tests", "success")
+      ]
+    );
+
+    expect(result.status).toBe("PROVEN");
+  });
+
+  it("requires every explicitly named resilience sub-scope to have direct success evidence", () => {
+    const result = guardSpecializedValidationClaim(
+      provenClaim("Resilience tests pass, including applicable fault-injection and concurrency scenarios"),
+      [
+        check("Core CI / Run fast resilience tests", "success"),
+        check("Resilience fault injection", "skipped"),
+        check("Concurrency stress", "skipped")
       ]
     );
 
     expect(result.status).toBe("UNPROVEN");
+    expect(result.reason).toContain("fault-injection testing");
+    expect(result.reason).toContain("concurrency testing");
   });
 
-  it("accepts direct successful specialized validation evidence", () => {
+  it("keeps a compound resilience claim proven when all named sub-scopes have direct successful evidence", () => {
     const result = guardSpecializedValidationClaim(
-      provenClaim("Property tests pass with deterministic seeds and shrinking"),
+      provenClaim("Resilience tests pass, including applicable fault-injection and concurrency scenarios"),
       [
-        check("Unit tests", "success"),
-        check("Property and fuzz testing", "success")
+        check("Core CI / Run fast resilience tests", "success"),
+        check("Resilience fault injection", "success"),
+        check("Concurrency stress", "success")
       ]
     );
 
