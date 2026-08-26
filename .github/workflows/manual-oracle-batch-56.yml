@@ -80,10 +80,11 @@ jobs:
           // job with directly executed steps for npm lint, test, build and
           // build-storybook. The issue explicitly says VRT is NOT part of the
           // agent-side verify gate; VRT is a separate Windows operator check.
-          // PRTruth must not silently turn that caveat into another acceptance
-          // requirement or require VRT to prove the explicitly stated CI gate.
-          if (report.results.some((result) => /VRT|visual regression/i.test(result.requirement.text))) {
-            throw new Error('Explicit VRT caveat must not be extracted as an acceptance criterion.');
+          // The caveat legitimately remains part of the third criterion's text,
+          // but it must not create a fourth criterion or turn Windows into an
+          // automated-gate scope requirement.
+          if (!/VRT.*NOT part of the agent-side verify gate/i.test(ciGate.requirement.text)) {
+            throw new Error('Expected the explicit VRT exclusion caveat to remain attached to the CI-gate criterion.');
           }
 
           // The first criterion includes a historical byte-unchanged property.
@@ -105,7 +106,7 @@ jobs:
           // The exact PR head has successful, directly observed lint, test,
           // library-build and build-storybook steps. This is the positive side of
           // the oracle: named executable evidence should be usable without
-          // inventing an out-of-scope VRT requirement.
+          // inventing an out-of-scope VRT/Windows requirement.
           if (ciGate.status !== 'PROVEN') {
             throw new Error(`Expected explicit lint/test/library/Storybook gate to be PROVEN from exact-head executable steps, got ${ciGate.status}.`);
           }
