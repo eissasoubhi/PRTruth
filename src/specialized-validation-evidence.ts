@@ -5,23 +5,12 @@ interface RequiredValidationEvidence {
   checkPattern: RegExp;
 }
 
-function requiredValidationEvidence(text: string): RequiredValidationEvidence[] {
+function requiredCompoundValidationEvidence(text: string): RequiredValidationEvidence[] {
   const requirements: RequiredValidationEvidence[] = [];
 
-  if (/\bproperty\s+tests?\b|\bfuzz(?:ing)?\b/i.test(text)) {
-    requirements.push({
-      label: "property/fuzz testing",
-      checkPattern: /\bproperty\b|\bfuzz(?:ing)?\b/i
-    });
-  }
-
-  if (/\bresilience\s+tests?\b|\bresilience\b/i.test(text)) {
-    requirements.push({
-      label: "resilience testing",
-      checkPattern: /\bresilience\b/i
-    });
-  }
-
+  // These are deliberately narrow sub-scopes. A broader successful test or
+  // resilience lane must not silently prove an explicitly named stress/fault
+  // scenario that GitHub never executed on the exact PR head.
   if (/\bfault[- ]injection\b/i.test(text)) {
     requirements.push({
       label: "fault-injection testing",
@@ -33,13 +22,6 @@ function requiredValidationEvidence(text: string): RequiredValidationEvidence[] 
     requirements.push({
       label: "concurrency testing",
       checkPattern: /\bconcurrenc(?:y|ies)\b/i
-    });
-  }
-
-  if (/\bhealth[- ]?checks?\b/i.test(text)) {
-    requirements.push({
-      label: "health checks",
-      checkPattern: /\bhealth[- ]?checks?\b|\bhealth\b/i
     });
   }
 
@@ -57,51 +39,36 @@ function hasSuccessfulDirectEvidence(
   );
 }
 
-function missingDirectEvidence(text: string, checks: CheckRunSummary[]): RequiredValidationEvidence[] {
-  return requiredValidationEvidence(text).filter(
-    (requirement) => !hasSuccessfulDirectEvidence(requirement, checks)
-  );
-}
+function guardResult<T extends ClaimResult | RequirementResult>(
+  result: T,
+  text: string,
+  checks: CheckRunSummary[]
+): T {
+  if (result.status !== "PROVEN") return result;
 
-function directEvidenceReason(missing: RequiredValidationEvidence[]): string {
-  const labels = missing.map((requirement) => requirement.label).join(", ");
-  return `This claim requires directly matching successful validation for: ${labels}. Generic green CI or skipped matching lanes are not execution evidence for those clauses.`;
+  const required = requiredCompoundValidationEvidence(text);
+  if (required.length === 0) return result;
+
+  const missing = required.filter((requirement) => !hasSuccessfulDirectEvidence(requirement, checks));
+  if (missing.length === 0) return result;
+
+  return {
+    ...result,
+    status: "UNPROVEN",
+    reason: `This completion statement explicitly names validation sub-scopes without directly matching successful execution evidence: ${missing.map((requirement) => requirement.label).join(", ")}. Generic or partial green CI cannot prove those clauses.`
+  } as T;
 }
 
 export function guardSpecializedValidationClaim(
   result: ClaimResult,
   checks: CheckRunSummary[]
 ): ClaimResult {
-  if (result.status !== "PROVEN") return result;
-
-  const required = requiredValidationEvidence(result.claim.text);
-  if (required.length === 0) return result;
-
-  const missing = missingDirectEvidence(result.claim.text, checks);
-  if (missing.length === 0) return result;
-
-  return {
-    ...result,
-    status: "UNPROVEN",
-    reason: directEvidenceReason(missing)
-  };
+  return guardResult(result, result.claim.text, checks);
 }
 
 export function guardSpecializedValidationRequirement(
   result: RequirementResult,
   checks: CheckRunSummary[]
 ): RequirementResult {
-  if (result.status !== "PROVEN") return result;
-
-  const required = requiredValidationEvidence(result.requirement.text);
-  if (required.length === 0) return result;
-
-  const missing = missingDirectEvidence(result.requirement.text, checks);
-  if (missing.length === 0) return result;
-
-  return {
-    ...result,
-    status: "UNPROVEN",
-    reason: directEvidenceReason(missing)
-  };
+  return guardResult(result, result.requirement.text, checks);
 }
