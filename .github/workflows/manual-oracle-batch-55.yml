@@ -76,28 +76,29 @@ jobs:
           }
 
           // Independent inspection of issue #322, PR #332 and exact-head checks
-          // shows a mixed evidence case. The exact head has successful Quality
-          // Gates and browser smoke, while the PR prose reports two consecutive
-          // generator runs and first-party source reconciliation. Current green
-          // CI does not by itself prove the historical process claim that the
-          // generated file was regenerated rather than manually patched.
+          // shows a deliberately conservative case. The exact head has generic
+          // successful Quality Gates / merge-gate / browser-smoke jobs, while
+          // the PR prose reports two consecutive generator runs and first-party
+          // source reconciliation. Current green CI does not by itself prove the
+          // historical process claim that generated output was regenerated rather
+          // than manually patched.
           if (generated.status === 'PROVEN') {
             throw new Error('Historical source-regeneration process must not be PROVEN from current-head green CI or PR prose alone.');
           }
 
-          // Likewise, preserving honest source/provenance semantics is stronger
-          // than simply having a green build/test lane; it requires direct
-          // evidence about the represented provenance state rather than a broad
-          // quality gate.
+          // Preserving honest source/provenance semantics is stronger than simply
+          // having a green build/test lane; it requires direct evidence about the
+          // represented provenance state rather than a broad quality gate.
           if (provenance.status === 'PROVEN') {
             throw new Error('Provenance-semantics criterion must not be PROVEN from broad green CI alone.');
           }
 
-          // A directly matching successful validation lane is allowed to prove a
-          // pure validation criterion. This assertion protects useful positive
-          // evidence while the stronger provenance/process clauses stay capped.
-          if (validation.status !== 'PROVEN') {
-            throw new Error(`Canonical validation should remain PROVEN when directly supported, received ${validation.status}.`);
+          // The upstream does not expose a check/step that is specifically named
+          // canonical validation. A generic `Quality Gates` success is therefore
+          // insufficient to claim that this exact criterion was executed. Keep
+          // the result fail-closed until directly matching evidence is observable.
+          if (validation.status === 'PROVEN') {
+            throw new Error('Canonical validation must not be PROVEN from a generic Quality Gates job alone.');
           }
 
           console.log(JSON.stringify({
