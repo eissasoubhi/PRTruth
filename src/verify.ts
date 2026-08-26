@@ -34,6 +34,10 @@ import {
   extractExplicitPathStateIntent
 } from "./repository-state-evidence.js";
 import { extractRequirements } from "./requirements.js";
+import {
+  guardSpecializedValidationClaim,
+  guardSpecializedValidationRequirement
+} from "./specialized-validation-evidence.js";
 import type {
   CheckRunSummary,
   ClaimResult,
@@ -358,12 +362,14 @@ export async function verifyPullRequest(input: {
     })
     .map(guardHistoricalClaim)
     .map(guardQuantifiedClaim)
-    .map(guardPackagedRuntimeClaim);
+    .map(guardPackagedRuntimeClaim)
+    .map((result) => guardSpecializedValidationClaim(result, checks));
   const baseResults = requirements
     .map((requirement) => evaluateRequirement(requirement, files, checks, requiredCheckContexts))
     .map(guardHistoricalRequirement)
     .map(guardQuantifiedRequirement)
-    .map(guardPackagedRuntimeRequirement);
+    .map(guardPackagedRuntimeRequirement)
+    .map((result) => guardSpecializedValidationRequirement(result, checks));
   const exactHeadResults = await Promise.all(baseResults.map((result) =>
     applyExactHeadPathStateEvidence({
       repository: input.repository,
