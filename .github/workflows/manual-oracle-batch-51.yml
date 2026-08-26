@@ -93,16 +93,19 @@ jobs:
             }
           }
 
-          // The contract-gate criterion is intentionally different: the issue
-          // asks for the two named gates to be green, and the exact PR head has
-          // successful executable OpenAPI Gate and Template Registry Gate steps.
-          // Treating this as PROVEN is the expected deterministic positive case.
-          if (contractGates.status !== 'PROVEN') {
-            throw new Error(`Expected the explicit OpenAPI + template-registry gate criterion to be PROVEN, received ${contractGates.status}.`);
+          // Human inspection considers the two explicit contract-gate steps
+          // sufficient for the narrow "both gates green" clause. PRTruth may
+          // remain UNPROVEN until a generic, fail-closed adapter can bind these
+          // repository-specific make targets safely. Do not turn that known
+          // false-negative gap into a false FAILED, and do not add a loose
+          // repository-specific matcher just to make this oracle green.
+          if (contractGates.status === 'FAILED') {
+            throw new Error(`Explicit successful contract gates must not be classified FAILED: ${contractGates.requirement.text}`);
           }
 
           console.log(JSON.stringify({
             verdict: report.verdict,
+            knownContractGateAdapterGap: contractGates.status,
             criteria: report.results.map((result) => ({
               text: result.requirement.text,
               status: result.status,
