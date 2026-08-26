@@ -2,6 +2,28 @@
 
 All notable changes to PRTruth are documented in this file.
 
+## 0.1.21
+
+Strengthened-validation evidence-integrity corrective release.
+
+### Fixed
+
+- A successful security/audit check can no longer prove a stronger claim such as `passes with an empty exception set` unless the empty state itself is observable in the evidence.
+- Current-head green coverage checks can no longer prove a historical/baseline clause such as `coverage floor unchanged (99.65)` unless the stated baseline/value is directly observable.
+- Ordinary present-tense claims such as `tests pass`, `security audit passes`, and a generic green coverage gate remain eligible for their existing deterministic CI evidence.
+
+### Dogfooding
+
+- Added Manual Oracle Batch 51 from a real public ASGI dependency/security remediation history.
+- The oracle exposed a critical false `PROVEN`: broad green CI was incorrectly treated as proof of an explicitly empty exception set and an unchanged numeric coverage floor.
+- A separate conservative false-negative remains intentionally open for repository-specific OpenAPI/template-registry make targets until a generic fail-closed command adapter can bind them safely; no loose repository-specific matcher was added.
+
+### Documentation and distribution
+
+- Public GitHub Action examples are aligned to `v0.1.21` and remain repository-neutral.
+- Public limitations now call out strengthened validation-state and baseline clauses explicitly.
+- The npm discovery keyword `ai` remains unchanged.
+
 ## 0.1.20
 
 Packaged-runtime evidence-integrity corrective release.
