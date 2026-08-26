@@ -166,7 +166,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: eissasoubhi/PRTruth@v0.1.21
+      - uses: eissasoubhi/PRTruth@v0.1.22
         with:
           pr: ${{ github.event.pull_request.number }}
           policy: report-only
@@ -270,7 +270,8 @@ PRTruth does **not** pretend that weak evidence proves a strong claim. Examples 
 - hidden commands inside generic wrapper steps;
 - platform, runner, service, browser, or hardware scopes that GitHub evidence does not expose;
 - historical red-first clauses such as “failing before the fix” when only current-head green CI is observable;
-- packaged-runtime or installer claims such as NSIS-installed or `win-unpacked` behavior when only generic dependency-install/build checks are observable.
+- packaged-runtime or installer claims such as NSIS-installed or `win-unpacked` behavior when only generic dependency-install/build checks are observable;
+- compound specialized-validation claims when an explicitly named sub-scope such as fault-injection or concurrency testing has no directly matching successful exact-head execution evidence.
 
 ## FAQ
 
@@ -284,7 +285,7 @@ No. It does not try to replace a reviewer or generate general review comments. I
 
 ### Does green CI mean the pull request is `PROVEN`?
 
-No. Green CI proves the checks that actually ran. A business rule, authorization requirement, compatibility claim, historical red-first clause, packaged-runtime claim, strengthened validation-state/baseline claim, or edge-case claim can still remain `UNPROVEN`.
+No. Green CI proves the checks that actually ran. A business rule, authorization requirement, compatibility claim, historical red-first clause, packaged-runtime claim, strengthened validation-state/baseline claim, explicitly named validation sub-scope, or edge-case claim can still remain `UNPROVEN`.
 
 ### Can PRTruth block a merge?
 
