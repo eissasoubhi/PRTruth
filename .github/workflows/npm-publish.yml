@@ -1,9 +1,8 @@
 name: Publish npm package
 
 on:
-  workflow_run:
-    workflows: ["Release"]
-    types: [completed]
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       tag:
@@ -12,12 +11,12 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
   id-token: write
 
 jobs:
   publish:
     name: validate / build / publish npm
-    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -28,13 +27,11 @@ jobs:
       - name: Resolve release source
         id: source
         shell: bash
-        env:
-          WORKFLOW_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             REF="${{ inputs.tag }}"
           else
-            REF="${WORKFLOW_HEAD_SHA}"
+            REF="${{ github.event.release.tag_name }}"
           fi
           if [[ -z "${REF}" ]]; then
             echo "Unable to resolve the release source ref."
@@ -70,7 +67,7 @@ jobs:
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             TAG="${{ inputs.tag }}"
           else
-            TAG="${EXPECTED_TAG}"
+            TAG="${{ github.event.release.tag_name }}"
           fi
           if [[ "${TAG}" != "${EXPECTED_TAG}" ]]; then
             echo "Release tag ${TAG} does not match package version ${PACKAGE_VERSION}."
@@ -78,7 +75,7 @@ jobs:
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
-      - name: Validate published GitHub release exists
+      - name: Validate published release provenance
         uses: actions/github-script@v9
         env:
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
@@ -91,7 +88,33 @@ jobs:
               core.setFailed(`Release ${tag} is still a draft; publish it on GitHub before publishing npm.`);
               return;
             }
-            core.info(`npm publish is authorized by published GitHub release ${release.data.html_url}`);
+
+            const commit = await github.rest.repos.getCommit({ owner, repo, ref: tag });
+            const associatedPulls = await github.paginate(
+              github.rest.repos.listPullRequestsAssociatedWithCommit,
+              {
+                owner,
+                repo,
+                commit_sha: commit.data.sha,
+                per_page: 100,
+              }
+            );
+            const mergedIntoMain = associatedPulls.filter((pull) =>
+              pull.merged_at &&
+              pull.base.ref === 'main' &&
+              pull.merge_commit_sha === commit.data.sha
+            );
+
+            if (mergedIntoMain.length !== 1) {
+              core.setFailed(
+                `npm publication requires exactly one merged pull request into main for ${commit.data.sha}; found ${mergedIntoMain.length}.`
+              );
+              return;
+            }
+
+            core.info(
+              `npm publish is authorized by ${release.data.html_url} at merge commit ${commit.data.sha} from PR #${mergedIntoMain[0].number}.`
+            );
 
       - name: Check whether npm version already exists
         id: npm
