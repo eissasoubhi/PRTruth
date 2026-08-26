@@ -2,6 +2,28 @@
 
 All notable changes to PRTruth are documented in this file.
 
+## 0.1.22
+
+Compound-validation evidence-integrity corrective release.
+
+### Fixed
+
+- A compound validation claim that explicitly names fault-injection and/or concurrency testing can no longer become `PROVEN` from only a partial resilience lane plus unrelated green tests.
+- Every explicitly named specialized validation sub-scope must have directly matching `completed + success` evidence on the exact pull-request head before the compound statement can remain `PROVEN`.
+- Ordinary validation claims with direct execution evidence remain eligible; the corrective does not penalize a property-test claim merely because a separate optional long-running property/fuzz lane was skipped.
+
+### Dogfooding
+
+- Added Manual Oracle Batch 54 from a real public resilience-validation history.
+- The oracle exposed the critical false `PROVEN`: fast resilience tests passed while dedicated fault-injection and concurrency lanes were skipped, yet the stronger checked completion claim was previously accepted.
+- The corrected oracle preserves the directly executed property-test claim as `PROVEN` while keeping the stronger compound resilience claim non-`PROVEN` until every named sub-scope is observably successful.
+
+### Documentation and distribution
+
+- Public GitHub Action examples are aligned to `v0.1.22` and remain repository-neutral.
+- Public limitations now call out explicitly named specialized validation sub-scopes.
+- The npm discovery keyword `ai` remains unchanged.
+
 ## 0.1.21
 
 Strengthened-validation evidence-integrity corrective release.
