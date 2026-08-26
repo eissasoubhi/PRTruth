@@ -1,0 +1,126 @@
+name: Manual oracle batch 52
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-52.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  visual-stability:
+    name: ExpressiveCSS visual-stability oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real visual-regression history
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo BaezFJ/ExpressiveCSS \
+            --issue 46 \
+            --pr 49 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/expressivecss-49.json
+
+      - name: Compare with independent visual-stability oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(readFileSync('dogfood-results/expressivecss-49.json', 'utf8')).report;
+
+          if (report.results.length !== 7) {
+            throw new Error(`Expected exactly 7 authoritative acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const hypothesis = report.results.find((result) => /hypothesis.*tested.*actual cause/i.test(result.requirement.text));
+          const repeated = report.results.find((result) => /passes.*visual suite.*repeated runs/i.test(result.requirement.text));
+          const ci = report.results.find((result) => /passes in CI/i.test(result.requirement.text));
+          const priorRaces = report.results.find((result) => /three races.*#11.*remain fixed/i.test(result.requirement.text));
+          const condition = report.results.find((result) => /condition.*not a longer fixed wait/i.test(result.requirement.text));
+          const noOtherPage = report.results.find((result) => /No page other than.*carousel.*changes/i.test(result.requirement.text));
+          const documented = report.results.find((result) => /cause.*fix.*recorded.*Visual regression.*CLAUDE\.md/i.test(result.requirement.text));
+
+          if (!hypothesis || !repeated || !ci || !priorRaces || !condition || !noOtherPage || !documented) {
+            throw new Error('Expected all seven ExpressiveCSS acceptance criteria to be extracted.');
+          }
+
+          // Independent inspection of issue #46, PR #49, and exact head
+          // 4750e2704af4ba4d2bc26c0f96f9e2ff34fb2ccf shows a successful
+          // GitHub Actions `screenshots` check on the exact PR head. That is
+          // direct evidence that the visual suite passed in CI. It is not, by
+          // itself, proof that repeated runs were performed, that the measured
+          // historical hypothesis was tested, that previous race fixes remain
+          // intact, or that no page other than carousel changed across the
+          // repeated local/base-head visual comparisons described in PR prose.
+          if (ci.status === 'FAILED') {
+            throw new Error(`Exact-head successful screenshots CI must not be classified FAILED: ${ci.requirement.text}`);
+          }
+
+          for (const result of [hypothesis, repeated, priorRaces, condition, noOtherPage]) {
+            if (result.status === 'PROVEN') {
+              throw new Error(`One exact-head green screenshots job must not over-prove stronger historical/repeated-run semantics: ${result.requirement.text}`);
+            }
+          }
+
+          // The CLAUDE.md criterion may become provable only through a future
+          // exact-head content-aware repository evidence adapter. A generic
+          // green visual/build check is not enough; for now guard only against
+          // a false FAILED while keeping the oracle compatible with a future
+          // deterministic adapter.
+          if (documented.status === 'FAILED') {
+            throw new Error(`Documentation criterion must not be classified FAILED without direct contradiction evidence: ${documented.requirement.text}`);
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            exactHeadScreenshotsCriterion: ci.status,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-52
+          path: dogfood-results/expressivecss-49.json
+          if-no-files-found: error
