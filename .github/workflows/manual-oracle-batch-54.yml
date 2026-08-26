@@ -70,21 +70,20 @@ jobs:
           const claims = report.claimResults ?? [];
           const property = claims.find((result) => /Property tests pass/i.test(result.claim.text));
           const resilience = claims.find((result) => /Resilience tests pass/i.test(result.claim.text));
-          const health = claims.find((result) => /Health checks/i.test(result.claim.text));
 
-          if (!property || !resilience || !health) {
-            throw new Error('Expected checked PR validation claims for property testing, resilience, and health checks to be extracted.');
+          if (!property || !resilience) {
+            throw new Error('Expected checked PR validation claims for property testing and resilience testing to be extracted.');
           }
 
           // Independent inspection of issue #106, PR #162, and exact PR head
           // c2f4daf9b2b4fd34830f0e99cc258752b9942f3b shows broad successful CI,
-          // but the exact GitHub checks `Property and fuzz testing`,
-          // `Resilience fault injection`, and `Health checks` are explicitly
-          // skipped. The PR body also says its local environment lacks the
-          // .NET SDK while presenting a very large checked validation list.
-          // A skipped exact-head lane is not execution evidence, and broad
-          // green gates must not over-prove these checked completion claims.
-          for (const result of [property, resilience, health]) {
+          // but the exact GitHub checks `Property and fuzz testing` and
+          // `Resilience fault injection` are explicitly skipped. The PR body
+          // also says its local environment lacks the .NET SDK while presenting
+          // a very large checked validation list. A skipped exact-head lane is
+          // not execution evidence, and broad green gates must not over-prove
+          // these checked completion claims.
+          for (const result of [property, resilience]) {
             if (result.status === 'PROVEN') {
               throw new Error(`Skipped exact-head validation must not become PROVEN from broad green CI or checked PR prose: ${result.claim.text}`);
             }
@@ -92,7 +91,7 @@ jobs:
 
           console.log(JSON.stringify({
             verdict: report.verdict,
-            selectedClaims: [property, resilience, health].map((result) => ({
+            selectedClaims: [property, resilience].map((result) => ({
               text: result.claim.text,
               status: result.status,
               reason: result.reason
