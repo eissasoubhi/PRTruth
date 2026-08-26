@@ -1,0 +1,44 @@
+name: Main merge provenance
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  verify-main-source:
+    name: verify merged-PR provenance
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require exactly one merged PR for current main SHA
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const response = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner,
+              repo,
+              commit_sha: context.sha,
+            });
+
+            const mergedIntoMain = response.data.filter((pull) =>
+              pull.merged_at &&
+              pull.base.ref === 'main' &&
+              pull.merge_commit_sha === context.sha
+            );
+
+            if (mergedIntoMain.length !== 1) {
+              core.setFailed(
+                `main provenance violation: expected exactly one merged pull request into main for ${context.sha}; found ${mergedIntoMain.length}.`
+              );
+              return;
+            }
+
+            core.info(
+              `main provenance verified from merged PR #${mergedIntoMain[0].number}: ${mergedIntoMain[0].html_url}`
+            );
