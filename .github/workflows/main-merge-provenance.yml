@@ -20,13 +20,17 @@ jobs:
         with:
           script: |
             const { owner, repo } = context.repo;
-            const response = await github.rest.repos.listPullRequestsAssociatedWithCommit({
-              owner,
-              repo,
-              commit_sha: context.sha,
-            });
+            const associatedPulls = await github.paginate(
+              github.rest.repos.listPullRequestsAssociatedWithCommit,
+              {
+                owner,
+                repo,
+                commit_sha: context.sha,
+                per_page: 100,
+              }
+            );
 
-            const mergedIntoMain = response.data.filter((pull) =>
+            const mergedIntoMain = associatedPulls.filter((pull) =>
               pull.merged_at &&
               pull.base.ref === 'main' &&
               pull.merge_commit_sha === context.sha
