@@ -1,0 +1,130 @@
+name: Manual oracle batch 56
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-56.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  explicit-gate-boundary:
+    name: Lifekit explicit VRT-gate oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real explicit-gate history
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo lifekit-hq/lifekit-common \
+            --issue 10 \
+            --pr 16 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/lifekit-common-16.json
+
+      - name: Compare with independent explicit-gate oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(readFileSync('dogfood-results/lifekit-common-16.json', 'utf8')).report;
+
+          if (report.results.length !== 3) {
+            throw new Error(`Expected exactly 3 authoritative Acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const extraction = report.results.find((result) => /charts-core.*zero.*angular/i.test(result.requirement.text));
+          const element = report.results.find((result) => /lk-line-chart.*charts-core.*tokens/i.test(result.requirement.text));
+          const ciGate = report.results.find((result) => /Lint.*unit tests.*library.*Storybook builds green/i.test(result.requirement.text));
+
+          if (!extraction || !element || !ciGate) {
+            throw new Error('Expected charts-core extraction, Lit pilot, and explicit CI-gate criteria to be extracted.');
+          }
+
+          // Independent inspection of issue #10, PR #16 and exact-head run
+          // a86770c85a0bb00db6ba984da989f78227e93160 shows one successful `ci`
+          // job with directly executed steps for npm lint, test, build and
+          // build-storybook. The issue explicitly says VRT is NOT part of the
+          // agent-side verify gate; VRT is a separate Windows operator check.
+          // The caveat legitimately remains part of the third criterion's text,
+          // but it must not create a fourth criterion or turn Windows into an
+          // automated-gate scope requirement.
+          if (!/VRT.*NOT part of the agent-side verify gate/i.test(ciGate.requirement.text)) {
+            throw new Error('Expected the explicit VRT exclusion caveat to remain attached to the CI-gate criterion.');
+          }
+
+          // The first criterion includes a historical byte-unchanged property.
+          // Current-head green CI and the current diff do not prove historical
+          // byte identity by themselves, so fail closed unless direct evidence
+          // for that stronger clause is observable.
+          if (extraction.status === 'PROVEN') {
+            throw new Error('Historical byte-unchanged extraction criterion must not be PROVEN from current-head CI alone.');
+          }
+
+          // The Lit pilot criterion is composite (implementation source, token
+          // theming, Storybook behavior, and documentation). A Storybook build
+          // alone cannot prove every clause.
+          if (element.status === 'PROVEN') {
+            throw new Error('Composite Lit-pilot criterion must not be PROVEN from a generic Storybook/build success alone.');
+          }
+
+          // The third criterion is intentionally the executable agent-side gate.
+          // The exact PR head has successful, directly observed lint, test,
+          // library-build and build-storybook steps. This is the positive side of
+          // the oracle: named executable evidence should be usable without
+          // inventing an out-of-scope VRT/Windows requirement.
+          if (ciGate.status !== 'PROVEN') {
+            throw new Error(`Expected explicit lint/test/library/Storybook gate to be PROVEN from exact-head executable steps, got ${ciGate.status}.`);
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-56
+          path: dogfood-results/lifekit-common-16.json
+          if-no-files-found: error

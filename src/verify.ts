@@ -12,6 +12,7 @@ import {
   findQuantitativePatchMismatchEvidence,
   type PatchFile
 } from "./diff-evidence.js";
+import { evidenceGateText } from "./evidence-gate-text.js";
 import { inspectExactHeadPath } from "./exact-head-file.js";
 import { GitHubClient } from "./github.js";
 import {
@@ -195,11 +196,15 @@ function evaluateRequirement(
     // scoped CI semantics. The old requirement-only path matched merely by
     // category name, which could let a generic green test job prove a stronger
     // requirement such as "Tests pass on Node 22 and Node 24".
+    // Explicitly excluded operator-side validation is removed only from the
+    // evidence-matching text so an out-of-gate platform mention cannot become
+    // an accidental required CI scope. The report still retains the original
+    // acceptance criterion verbatim.
     // Historical red-first clauses are guarded after assessment so an observed
     // current-head failure still remains FAILED rather than being hidden.
     return guardHistoricalRequirement(ciAssessmentToRequirementResult(
       requirement,
-      assessCompletionClaim(requirement.text, checks)
+      assessCompletionClaim(evidenceGateText(requirement.text), checks)
     ));
   }
 
@@ -342,7 +347,15 @@ export async function verifyPullRequest(input: {
     : bodyRequirements;
   const claims = extractCompletionClaims(pull.body ?? "");
   const changedFiles = files.map((file) => file.filename);
-  const claimResults = buildClaimResults(claims, checks, changedFiles)
+  const evidenceClaims = claims.map((claim) => ({
+    ...claim,
+    text: evidenceGateText(claim.text)
+  }));
+  const claimResults = buildClaimResults(evidenceClaims, checks, changedFiles)
+    .map((result, index) => ({
+      ...result,
+      claim: claims[index] ?? result.claim
+    }))
     .map((result) => {
       if (!isRequiredChecksSuccessStatement(result.claim.text)) return result;
 
