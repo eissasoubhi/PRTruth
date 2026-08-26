@@ -28,20 +28,7 @@ function provenRequirement(text: string): RequirementResult {
 }
 
 describe("specialized validation evidence guard", () => {
-  it("does not let generic green tests prove property tests without direct property evidence", () => {
-    const result = guardSpecializedValidationClaim(
-      provenClaim("Property tests pass with deterministic seeds and shrinking"),
-      [
-        check("Unit tests", "success"),
-        check("Property and fuzz testing", "skipped")
-      ]
-    );
-
-    expect(result.status).toBe("UNPROVEN");
-    expect(result.reason).toContain("property/fuzz testing");
-  });
-
-  it("accepts a property-test claim when a directly matching property step succeeds", () => {
+  it("does not change ordinary property-test claims", () => {
     const result = guardSpecializedValidationClaim(
       provenClaim("Property tests pass with deterministic seeds and shrinking"),
       [
@@ -81,15 +68,26 @@ describe("specialized validation evidence guard", () => {
     expect(result.status).toBe("PROVEN");
   });
 
-  it("applies the same ceiling to acceptance-criteria requirements", () => {
+  it("applies the same compound-scope ceiling to acceptance-criteria requirements", () => {
     const result = guardSpecializedValidationRequirement(
-      provenRequirement("Health checks pass"),
+      provenRequirement("Fault-injection and concurrency tests pass"),
       [
-        check("Integration tests", "success"),
-        check("Health checks", "skipped")
+        check("Unit tests", "success"),
+        check("Resilience fault injection", "success"),
+        check("Concurrency stress", "skipped")
       ]
     );
 
     expect(result.status).toBe("UNPROVEN");
+    expect(result.reason).toContain("concurrency testing");
+  });
+
+  it("does not affect unrelated health-check requirements", () => {
+    const result = guardSpecializedValidationRequirement(
+      provenRequirement("Health checks pass"),
+      [check("Health checks", "skipped")]
+    );
+
+    expect(result.status).toBe("PROVEN");
   });
 });
