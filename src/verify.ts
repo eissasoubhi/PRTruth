@@ -21,6 +21,11 @@ import {
 import { discoverInstructionFiles } from "./instructions.js";
 import { resolveIssueNumber } from "./linked-issue.js";
 import {
+  PACKAGED_RUNTIME_UNPROVEN_REASON,
+  hasPackagedRuntimeExecutionEvidence,
+  requiresPackagedRuntimeExecutionEvidence
+} from "./packaged-runtime-evidence.js";
+import {
   QUANTIFIED_COUNT_UNPROVEN_REASON,
   requiresQuantifiedArtifactCountEvidence
 } from "./quantitative-guard.js";
@@ -139,6 +144,36 @@ function guardQuantifiedClaim(result: ClaimResult): ClaimResult {
       ...result,
       status: "UNPROVEN",
       reason: QUANTIFIED_COUNT_UNPROVEN_REASON
+    };
+  }
+  return result;
+}
+
+function guardPackagedRuntimeRequirement(result: RequirementResult): RequirementResult {
+  if (
+    result.status === "PROVEN"
+    && requiresPackagedRuntimeExecutionEvidence(result.requirement.text)
+    && !hasPackagedRuntimeExecutionEvidence(result.requirement.text, result.evidence)
+  ) {
+    return {
+      ...result,
+      status: "UNPROVEN",
+      reason: PACKAGED_RUNTIME_UNPROVEN_REASON
+    };
+  }
+  return result;
+}
+
+function guardPackagedRuntimeClaim(result: ClaimResult): ClaimResult {
+  if (
+    result.status === "PROVEN"
+    && requiresPackagedRuntimeExecutionEvidence(result.claim.text)
+    && !hasPackagedRuntimeExecutionEvidence(result.claim.text, result.evidence)
+  ) {
+    return {
+      ...result,
+      status: "UNPROVEN",
+      reason: PACKAGED_RUNTIME_UNPROVEN_REASON
     };
   }
   return result;
@@ -322,11 +357,13 @@ export async function verifyPullRequest(input: {
       };
     })
     .map(guardHistoricalClaim)
-    .map(guardQuantifiedClaim);
+    .map(guardQuantifiedClaim)
+    .map(guardPackagedRuntimeClaim);
   const baseResults = requirements
     .map((requirement) => evaluateRequirement(requirement, files, checks, requiredCheckContexts))
     .map(guardHistoricalRequirement)
-    .map(guardQuantifiedRequirement);
+    .map(guardQuantifiedRequirement)
+    .map(guardPackagedRuntimeRequirement);
   const exactHeadResults = await Promise.all(baseResults.map((result) =>
     applyExactHeadPathStateEvidence({
       repository: input.repository,
