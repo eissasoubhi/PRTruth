@@ -1,0 +1,143 @@
+name: Validate public 0.1.21
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/validate-0.1.21-public.yml"
+
+permissions:
+  contents: read
+  actions: read
+  checks: read
+  issues: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Wait for exact public npm package
+        shell: bash
+        env:
+          NPM_CONFIG_USERCONFIG: /dev/null
+          NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+        run: |
+          set -euo pipefail
+          EXPECTED_VERSION="0.1.21"
+          for attempt in $(seq 1 40); do
+            PUBLISHED_VERSION="$(npm view "prtruth@${EXPECTED_VERSION}" version --silent 2>/dev/null || true)"
+            LATEST_VERSION="$(npm view prtruth dist-tags.latest --silent 2>/dev/null || true)"
+            if [[ "${PUBLISHED_VERSION}" == "${EXPECTED_VERSION}" && "${LATEST_VERSION}" == "${EXPECTED_VERSION}" ]]; then
+              echo "Public npm exposes prtruth@${EXPECTED_VERSION} as latest."
+              exit 0
+            fi
+            if [[ "${attempt}" -eq 40 ]]; then
+              echo "prtruth@${EXPECTED_VERSION} was not publicly resolvable as latest after ${attempt} attempts."
+              exit 1
+            fi
+            sleep 6
+          done
+
+      - name: Verify public CLI and strengthened-validation evidence fix
+        shell: bash
+        env:
+          NPM_CONFIG_USERCONFIG: /dev/null
+          NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+        run: |
+          set -euo pipefail
+          EXPECTED_VERSION="0.1.21"
+          TEMP_DIR="$(mktemp -d)"
+          trap 'rm -rf "${TEMP_DIR}"' EXIT
+          cd "${TEMP_DIR}"
+
+          CLI_VERSION="$(npx -y "prtruth@${EXPECTED_VERSION}" --version)"
+          test "${CLI_VERSION}" = "${EXPECTED_VERSION}"
+
+          HELP_OUTPUT="$(npx -y "prtruth@${EXPECTED_VERSION}" --help)"
+          grep -F -- "--issue <number>" <<<"${HELP_OUTPUT}"
+          grep -F -- "--pr <number>" <<<"${HELP_OUTPUT}"
+          grep -F -- "--repo <owner/repo>" <<<"${HELP_OUTPUT}"
+          grep -F -- "--format <format>" <<<"${HELP_OUTPUT}"
+          grep -F -- "--output <path>" <<<"${HELP_OUTPUT}"
+          grep -F -- "--github-summary" <<<"${HELP_OUTPUT}"
+          grep -F -- "--comment" <<<"${HELP_OUTPUT}"
+          grep -F -- "--policy <policy>" <<<"${HELP_OUTPUT}"
+          grep -F -- "--color <mode>" <<<"${HELP_OUTPUT}"
+
+          mkdir -p reports
+          env -u GITHUB_TOKEN npx -y "prtruth@${EXPECTED_VERSION}" verify \
+            --repo sgajbi/lotus-render \
+            --issue 70 \
+            --pr 71 \
+            --policy report-only \
+            --format json \
+            --output reports/lotus-render-71.json
+
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const report = JSON.parse(readFileSync('reports/lotus-render-71.json', 'utf8')).report;
+          if (report.results.length !== 6) throw new Error(`Expected 6 acceptance criteria, got ${report.results.length}`);
+          const cleanAudit = report.results.find((result) => /security-audit.*empty exception set/i.test(result.requirement?.text ?? ''));
+          const coverage = report.results.find((result) => /test-coverage.*coverage floor unchanged/i.test(result.requirement?.text ?? ''));
+          if (!cleanAudit || !coverage) throw new Error('Missing strengthened validation criteria');
+          if (cleanAudit.status === 'PROVEN') throw new Error('Public 0.1.21 must not prove an empty exception set from broad green CI alone');
+          if (coverage.status === 'PROVEN') throw new Error('Public 0.1.21 must not prove an unchanged numeric coverage floor from current-head green tests alone');
+          if (report.verdict === 'PROVEN') throw new Error('Lotus-render oracle must not be globally PROVEN while stronger clauses remain unobserved');
+          console.log(`Public 0.1.21 audit=${cleanAudit.status} coverage=${coverage.status}`);
+          NODE
+
+      - name: Run exact-version composite Action
+        uses: ./
+        with:
+          repo: sgajbi/lotus-render
+          issue: 70
+          pr: 71
+          policy: report-only
+          github_summary: "false"
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build current source
+        run: pnpm build
+
+      - name: Re-run independent current-source oracle
+        run: |
+          mkdir -p oracle-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo sgajbi/lotus-render \
+            --issue 70 \
+            --pr 71 \
+            --policy report-only \
+            --format json \
+            --output oracle-results/lotus-render-71.json
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const report = JSON.parse(readFileSync('oracle-results/lotus-render-71.json', 'utf8')).report;
+          const cleanAudit = (report.results ?? []).find((result) => /security-audit.*empty exception set/i.test(result.requirement?.text ?? ''));
+          const coverage = (report.results ?? []).find((result) => /test-coverage.*coverage floor unchanged/i.test(result.requirement?.text ?? ''));
+          if (!cleanAudit || cleanAudit.status === 'PROVEN') throw new Error('Current-source empty-exception-set oracle regressed');
+          if (!coverage || coverage.status === 'PROVEN') throw new Error('Current-source coverage-baseline oracle regressed');
+          if (report.verdict === 'PROVEN') throw new Error('Current-source lotus-render oracle must not be globally PROVEN');
+          NODE
