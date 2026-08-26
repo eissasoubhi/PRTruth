@@ -2,6 +2,28 @@
 
 All notable changes to PRTruth are documented in this file.
 
+## 0.1.20
+
+Packaged-runtime evidence-integrity corrective release.
+
+### Fixed
+
+- Requirements that explicitly name packaged or installed runtime artifacts such as NSIS-installed builds or `win-unpacked` can no longer become `PROVEN` from generic dependency-install or build checks alone.
+- Packaged-runtime requirements now stay `UNPROVEN` unless observable evidence directly exercises the named packaged/install path.
+- Direct packaged-runtime smoke evidence remains eligible when the observed lane actually names and executes the relevant artifact path; ordinary dependency installation remains non-probative.
+
+### Dogfooding
+
+- Added Manual Oracle Batch 49 from a real public Windows desktop packaging regression history.
+- The oracle exposed a critical false `PROVEN`: successful `Install dependencies` and build evidence was incorrectly treated as proof that both a `win-unpacked` artifact and an NSIS-installed application passed the original runtime scenario.
+- The corrected oracle preserves meaningful standalone-build evidence while keeping the unobserved NSIS-installed runtime criterion `UNPROVEN`.
+
+### Documentation and distribution
+
+- Public GitHub Action examples are aligned to `v0.1.20` and remain repository-neutral.
+- Public limitations now call out packaged-runtime and installer-specific evidence explicitly.
+- The npm discovery keyword `ai` remains unchanged.
+
 ## 0.1.19
 
 Evidence-history corrective release.
