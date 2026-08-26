@@ -1,0 +1,123 @@
+name: Manual oracle batch 51
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-51.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  asgi-security-audit:
+    name: ASGI security-audit evidence oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real ASGI security-remediation history
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo sgajbi/lotus-render \
+            --issue 70 \
+            --pr 71 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/lotus-render-71.json
+
+      - name: Compare with independent ASGI/security oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(readFileSync('dogfood-results/lotus-render-71.json', 'utf8')).report;
+
+          if (report.results.length !== 6) {
+            throw new Error(`Expected exactly 6 authoritative acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const noStarletteException = report.results.find((result) => /contains no Starlette entry/i.test(result.requirement.text));
+          const exactPins = report.results.find((result) => /pins .*prometheus-fastapi-instrumentator.*starlette/i.test(result.requirement.text));
+          const cleanAudit = report.results.find((result) => /security-audit.*empty exception set/i.test(result.requirement.text));
+          const coverage = report.results.find((result) => /test-coverage.*unit.*integration.*e2e/i.test(result.requirement.text));
+          const contractGates = report.results.find((result) => /openapi-gate.*template-registry-gate/i.test(result.requirement.text));
+          const emptyManifestSupport = report.results.find((result) => /pip_audit_gate\.py.*empty exception list/i.test(result.requirement.text));
+
+          if (!noStarletteException || !exactPins || !cleanAudit || !coverage || !contractGates || !emptyManifestSupport) {
+            throw new Error('Expected all six lotus-render acceptance criteria to be extracted.');
+          }
+
+          // Independent inspection of issue #70, PR #71, and exact-head run
+          // 32933068935 shows explicit successful Security Audit, unit,
+          // integration, e2e, OpenAPI Gate, and Template Registry Gate runtime
+          // steps. However, the check names alone do not expose the stronger
+          // repository-state clauses: zero Starlette exception records, exact
+          // dependency pins, an actually empty exception set, unchanged numeric
+          // coverage floor, or the script accepting an empty manifest. Those
+          // stronger clauses must not be inferred merely from green CI or PR
+          // prose.
+          for (const result of [noStarletteException, exactPins, cleanAudit, coverage, emptyManifestSupport]) {
+            if (result.status === 'PROVEN') {
+              throw new Error(`Stronger repository-state/quantitative criterion must not be PROVEN from green CI alone: ${result.requirement.text}`);
+            }
+          }
+
+          // Human inspection considers the two explicit contract-gate steps
+          // sufficient for the narrow "both gates green" clause. PRTruth may
+          // remain UNPROVEN until a generic, fail-closed adapter can bind these
+          // repository-specific make targets safely. Do not turn that known
+          // false-negative gap into a false FAILED, and do not add a loose
+          // repository-specific matcher just to make this oracle green.
+          if (contractGates.status === 'FAILED') {
+            throw new Error(`Explicit successful contract gates must not be classified FAILED: ${contractGates.requirement.text}`);
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            knownContractGateAdapterGap: contractGates.status,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-51
+          path: dogfood-results/lotus-render-71.json
+          if-no-files-found: error
