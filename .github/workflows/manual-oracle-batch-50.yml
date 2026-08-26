@@ -1,0 +1,109 @@
+name: Manual oracle batch 50
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-50.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  live-refund:
+    name: Live refund evidence oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real live-refund runbook history
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo on-par/sound-buddy \
+            --issue 1217 \
+            --pr 1223 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/sound-buddy-1223.json
+
+      - name: Compare with independent live-refund oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(readFileSync('dogfood-results/sound-buddy-1223.json', 'utf8')).report;
+
+          if (report.results.length !== 2) {
+            throw new Error(`Expected exactly 2 authoritative acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const refundRecorded = report.results.find((result) => /refund is recorded/i.test(result.requirement.text));
+          const licenseUnaffected = report.results.find((result) => /license state unaffected/i.test(result.requirement.text));
+
+          if (!refundRecorded || !licenseUnaffected) {
+            throw new Error('Expected both live-refund acceptance criteria to be extracted.');
+          }
+
+          // Independent inspection of issue #1217 and PR #1223 shows that the
+          // issue requires a real Stripe Live refund, observable charge.refunded
+          // handling, and a packaged-build license check. PR #1223 is docs-only:
+          // it adds the runbook and explicitly leaves its Results table PENDING.
+          // Source-level tests/typecheck and any generic CI are therefore not
+          // execution proof of the requested live external-service behavior.
+          for (const result of [refundRecorded, licenseUnaffected]) {
+            if (result.status === 'PROVEN') {
+              throw new Error(`Live external-service criterion must not be PROVEN from a docs-only runbook PR: ${result.requirement.text}`);
+            }
+          }
+
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Overall verdict must not be PROVEN while the live refund and packaged-license checks remain unexecuted.');
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-50
+          path: dogfood-results/sound-buddy-1223.json
+          if-no-files-found: error
