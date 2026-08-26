@@ -1,0 +1,144 @@
+name: Validate public 0.1.22
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/validate-0.1.22-public.yml"
+
+permissions:
+  contents: read
+  actions: read
+  checks: read
+  issues: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Wait for exact public npm package
+        shell: bash
+        env:
+          NPM_CONFIG_USERCONFIG: /dev/null
+          NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+        run: |
+          set -euo pipefail
+          EXPECTED_VERSION="0.1.22"
+          for attempt in $(seq 1 40); do
+            PUBLISHED_VERSION="$(npm view "prtruth@${EXPECTED_VERSION}" version --silent 2>/dev/null || true)"
+            LATEST_VERSION="$(npm view prtruth dist-tags.latest --silent 2>/dev/null || true)"
+            if [[ "${PUBLISHED_VERSION}" == "${EXPECTED_VERSION}" && "${LATEST_VERSION}" == "${EXPECTED_VERSION}" ]]; then
+              echo "Public npm exposes prtruth@${EXPECTED_VERSION} as latest."
+              exit 0
+            fi
+            if [[ "${attempt}" -eq 40 ]]; then
+              echo "prtruth@${EXPECTED_VERSION} was not publicly resolvable as latest after ${attempt} attempts."
+              exit 1
+            fi
+            sleep 6
+          done
+
+      - name: Verify public CLI and Batch 54 evidence fix
+        shell: bash
+        env:
+          NPM_CONFIG_USERCONFIG: /dev/null
+          NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+        run: |
+          set -euo pipefail
+          EXPECTED_VERSION="0.1.22"
+          TEMP_DIR="$(mktemp -d)"
+          trap 'rm -rf "${TEMP_DIR}"' EXIT
+          cd "${TEMP_DIR}"
+
+          CLI_VERSION="$(npx -y "prtruth@${EXPECTED_VERSION}" --version)"
+          test "${CLI_VERSION}" = "${EXPECTED_VERSION}"
+
+          HELP_OUTPUT="$(npx -y "prtruth@${EXPECTED_VERSION}" --help)"
+          grep -F -- "--issue <number>" <<<"${HELP_OUTPUT}"
+          grep -F -- "--pr <number>" <<<"${HELP_OUTPUT}"
+          grep -F -- "--repo <owner/repo>" <<<"${HELP_OUTPUT}"
+          grep -F -- "--format <format>" <<<"${HELP_OUTPUT}"
+          grep -F -- "--output <path>" <<<"${HELP_OUTPUT}"
+          grep -F -- "--github-summary" <<<"${HELP_OUTPUT}"
+          grep -F -- "--comment" <<<"${HELP_OUTPUT}"
+          grep -F -- "--policy <policy>" <<<"${HELP_OUTPUT}"
+          grep -F -- "--color <mode>" <<<"${HELP_OUTPUT}"
+
+          mkdir -p reports
+          env -u GITHUB_TOKEN npx -y "prtruth@${EXPECTED_VERSION}" verify \
+            --repo Amir-ESH/TCJ.Framework \
+            --issue 106 \
+            --pr 162 \
+            --policy report-only \
+            --format json \
+            --output reports/tcj-framework-162.json
+
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const report = JSON.parse(readFileSync('reports/tcj-framework-162.json', 'utf8')).report;
+          if (report.results.length !== 4) throw new Error(`Expected 4 acceptance criteria, got ${report.results.length}`);
+          const claims = report.claimResults ?? [];
+          const property = claims.find((result) => /Property tests pass/i.test(result.claim?.text ?? ''));
+          const resilience = claims.find((result) => /Resilience tests pass/i.test(result.claim?.text ?? ''));
+          if (!property || !resilience) throw new Error('Missing Batch 54 validation claims');
+          if (property.status !== 'PROVEN') throw new Error(`Direct property-test evidence regressed: ${property.status}`);
+          if (resilience.status === 'PROVEN') throw new Error('Public 0.1.22 must not prove compound resilience while named fault-injection/concurrency lanes are skipped');
+          console.log(`Public 0.1.22 property=${property.status} resilience=${resilience.status}`);
+          NODE
+
+      - name: Run exact public-tag composite Action
+        uses: eissasoubhi/PRTruth@v0.1.22
+        with:
+          repo: Amir-ESH/TCJ.Framework
+          issue: 106
+          pr: 162
+          policy: report-only
+          github_summary: "false"
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build current source
+        run: pnpm build
+
+      - name: Re-run independent current-source Batch 54 oracle
+        shell: bash
+        run: |
+          mkdir -p oracle-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo Amir-ESH/TCJ.Framework \
+            --issue 106 \
+            --pr 162 \
+            --policy report-only \
+            --format json \
+            --output oracle-results/tcj-framework-162.json
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const report = JSON.parse(readFileSync('oracle-results/tcj-framework-162.json', 'utf8')).report;
+          const claims = report.claimResults ?? [];
+          const property = claims.find((result) => /Property tests pass/i.test(result.claim?.text ?? ''));
+          const resilience = claims.find((result) => /Resilience tests pass/i.test(result.claim?.text ?? ''));
+          if (!property || property.status !== 'PROVEN') throw new Error('Current-source property-test evidence regressed');
+          if (!resilience || resilience.status === 'PROVEN') throw new Error('Current-source compound resilience evidence regressed');
+          NODE
