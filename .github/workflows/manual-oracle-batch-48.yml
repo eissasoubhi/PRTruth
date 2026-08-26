@@ -1,0 +1,110 @@
+name: Manual oracle batch 48
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-48.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  cors-fail-closed:
+    name: CORS fail-closed evidence oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real CORS hardening history
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo FinesseStudioLab/modeltrace-backend \
+            --issue 2 \
+            --pr 73 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/modeltrace-backend-73.json
+
+      - name: Compare with independent CORS oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(readFileSync('dogfood-results/modeltrace-backend-73.json', 'utf8')).report;
+
+          if (report.results.length !== 4) {
+            throw new Error(`Expected exactly 4 authoritative acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const multipleOrigins = report.results.find((result) => /multiple origins supported/i.test(result.requirement.text));
+          const productionExplicit = report.results.find((result) => /production requires an explicit value/i.test(result.requirement.text));
+          const wildcardRejected = report.results.find((result) => /wildcard rejected in production/i.test(result.requirement.text));
+          const testsCover = report.results.find((result) => /tests cover parsing.*production guard/i.test(result.requirement.text));
+
+          if (!multipleOrigins || !productionExplicit || !wildcardRejected || !testsCover) {
+            throw new Error('Expected all four CORS hardening acceptance criteria to be extracted.');
+          }
+
+          // Independent inspection of PR #73 shows the exact-head diff contains the
+          // implementation and focused tests, and the exact head has one successful
+          // GitHub check named "Lint, build, test". That generic green check proves
+          // that the observed lane passed, but it does not by itself prove runtime CORS
+          // semantics such as multi-origin behavior or fail-closed production startup.
+          for (const result of [multipleOrigins, productionExplicit, wildcardRejected]) {
+            if (result.status === 'PROVEN') {
+              throw new Error(`Generic green CI must not prove CORS runtime/config semantics: ${result.requirement.text}`);
+            }
+          }
+
+          if (testsCover.status === 'PROVEN' && !testsCover.evidence.some((item) => /test/i.test(item.summary))) {
+            throw new Error('The test-coverage criterion must not be PROVEN from evidence unrelated to tests.');
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-48
+          path: dogfood-results/modeltrace-backend-73.json
+          if-no-files-found: error
