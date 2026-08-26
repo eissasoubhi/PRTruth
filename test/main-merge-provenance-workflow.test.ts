@@ -18,6 +18,8 @@ describe("main merge provenance workflow", () => {
 
   it("requires the current main SHA to be the merge commit of exactly one merged PR", () => {
     expect(workflowText).toContain("listPullRequestsAssociatedWithCommit");
+    expect(workflowText).toContain("github.paginate");
+    expect(workflowText).toContain("per_page: 100");
     expect(workflowText).toContain("pull.base.ref === 'main'");
     expect(workflowText).toContain("pull.merge_commit_sha === context.sha");
     expect(workflowText).toContain("mergedIntoMain.length !== 1");
