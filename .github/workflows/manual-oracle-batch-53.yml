@@ -1,0 +1,118 @@
+name: Manual oracle batch 53
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-53.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  rust-ownership:
+    name: Kunlun JSC ownership oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real Rust/JSC ownership history
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo kunlunengine/runtime \
+            --issue 8 \
+            --pr 19 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/kunlun-runtime-19.json
+
+      - name: Compare with independent ownership oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(readFileSync('dogfood-results/kunlun-runtime-19.json', 'utf8')).report;
+
+          if (report.results.length !== 7) {
+            throw new Error(`Expected exactly 7 authoritative acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const lifetime = report.results.find((result) => /cannot outlive their owner/i.test(result.requirement.text));
+          const threadAffinity = report.results.find((result) => /!Send.*!Sync/i.test(result.requirement.text));
+          const protect = report.results.find((result) => /JSValueProtect.*JSValueUnprotect.*exactly once/i.test(result.requirement.text));
+          const raii = report.results.find((result) => /release order.*RAII.*targeted tests/i.test(result.requirement.text));
+          const typedErrors = report.results.find((result) => /Typed errors preserve.*source URL.*exception text/i.test(result.requirement.text));
+          const rawHandles = report.results.find((result) => /Raw handles.*unsafe.*extension points/i.test(result.requirement.text));
+          const miri = report.results.find((result) => /Miri covers wrapper-owned invariants/i.test(result.requirement.text));
+
+          if (!lifetime || !threadAffinity || !protect || !raii || !typedErrors || !rawHandles || !miri) {
+            throw new Error('Expected all seven Kunlun JSC ownership acceptance criteria to be extracted.');
+          }
+
+          // Independent inspection of issue #8, PR #19, and exact PR head
+          // 2bf35749a1f22cfa3915419d55e8326f59ecaf66 shows four successful
+          // GitHub Actions jobs. Crucially, one is named `Miri ownership
+          // invariants` and contains a successful `Check wrapper-owned
+          // invariants` step. That is direct observable support for the Miri
+          // criterion. The remaining semantic ownership guarantees are only
+          // indirectly covered behind generic build/test lanes and PR prose;
+          // those broad green checks must not prove the stronger claims by
+          // themselves.
+          if (miri.status === 'FAILED') {
+            throw new Error(`Successful exact-head Miri ownership evidence must not be classified FAILED: ${miri.requirement.text}`);
+          }
+
+          for (const result of [lifetime, threadAffinity, protect, raii, typedErrors, rawHandles]) {
+            if (result.status === 'PROVEN') {
+              throw new Error(`Generic green build/test lanes must not over-prove stronger Rust ownership semantics: ${result.requirement.text}`);
+            }
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            miri: miri.status,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-53
+          path: dogfood-results/kunlun-runtime-19.json
+          if-no-files-found: error
