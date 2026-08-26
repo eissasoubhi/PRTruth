@@ -82,6 +82,8 @@ The evidence boundary matters:
 - it does not prove the exact number `542` unless that value is observable in the evidence;
 - a Node 22 + Node 24 claim needs observable evidence for both lanes;
 - ordinary green CI does not prove `No breaking changes`;
+- an audit being green does not prove a stronger clause such as “with an empty exception set” unless that empty state is observable;
+- a green coverage lane does not prove an unchanged numeric baseline unless the baseline/value is observable;
 - current-head green CI does not prove a historical clause such as “this regression failed before the fix” unless before-state evidence is observable;
 - generic install/build checks do not prove an installer-specific or packaged-runtime claim such as NSIS-installed or `win-unpacked` behavior.
 
@@ -109,7 +111,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: eissasoubhi/PRTruth@v0.1.20
+      - uses: eissasoubhi/PRTruth@v0.1.21
         with:
           pr: ${{ github.event.pull_request.number }}
           policy: report-only
@@ -144,6 +146,7 @@ A useful PRTruth trial should include more than a happy path. Try PRs with:
 - an exact quantitative claim whose value is not visible and should remain `UNPROVEN`;
 - an explicitly failed matching check that should be `FAILED`;
 - a historical red-first claim where only post-fix CI is visible and should remain `UNPROVEN`;
+- a strengthened validation claim such as an empty exception/suppression state or unchanged numeric baseline where the stronger state/value is not observable;
 - a platform, runtime, browser, service, packaged-installer, or named-tool claim where one lane is missing;
 - a broad business/runtime claim that CI does not deterministically prove.
 
