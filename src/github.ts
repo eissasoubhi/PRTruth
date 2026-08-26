@@ -175,36 +175,57 @@ function workflowJobEvidenceName(job: GitHubWorkflowJobResponse): string {
 export class GitHubClient {
   constructor(private readonly token = process.env.GITHUB_TOKEN) {}
 
-  private headers(): Record<string, string> {
+  private headers(authenticated = true): Record<string, string> {
     const headers: Record<string, string> = {
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
       "User-Agent": "PRTruth"
     };
 
-    if (this.token) {
+    if (authenticated && this.token) {
       headers.Authorization = `Bearer ${this.token}`;
     }
 
     return headers;
   }
 
+  private async fetchResponse(path: string): Promise<{ response: Response; originalError?: GitHubApiError }> {
+    const url = `https://api.github.com${path}`;
+    const response = await fetch(url, { headers: this.headers() });
+
+    // A shared Actions token can hit GitHub's secondary/rate limit while the
+    // same public resource is still readable anonymously. Retrying once
+    // without credentials is safe only when the anonymous read itself succeeds.
+    // If it does not, preserve the original authenticated 403 so private or
+    // permission-restricted resources never turn into a misleading 404/absence.
+    if (response.status === 403 && this.token) {
+      const originalError = apiError(response, path);
+      const anonymous = await fetch(url, { headers: this.headers(false) });
+      if (anonymous.ok) {
+        return { response: anonymous, originalError };
+      }
+      return { response, originalError };
+    }
+
+    return { response };
+  }
+
   private async request<T>(path: string): Promise<T> {
-    const response = await fetch(`https://api.github.com${path}`, { headers: this.headers() });
+    const { response, originalError } = await this.fetchResponse(path);
 
     if (!response.ok) {
-      throw apiError(response, path);
+      throw originalError ?? apiError(response, path);
     }
 
     return response.json() as Promise<T>;
   }
 
   private async requestOptional<T>(path: string): Promise<T | null> {
-    const response = await fetch(`https://api.github.com${path}`, { headers: this.headers() });
-    if (response.status === 404) return null;
+    const { response, originalError } = await this.fetchResponse(path);
+    if (response.status === 404 && !originalError) return null;
 
     if (!response.ok) {
-      throw apiError(response, path);
+      throw originalError ?? apiError(response, path);
     }
 
     return response.json() as Promise<T>;
