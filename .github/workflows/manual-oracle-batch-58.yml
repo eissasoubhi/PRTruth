@@ -80,9 +80,19 @@ jobs:
           // b38b488d0ee284f644fb36bafc4272262a60a597: the PR was merged and closed
           // the issue despite exact-head failures including `test`, Playwright component tests,
           // axe-playwright, bundlesize, and Secret Scanning. Merge/closure must never override
-          // contradictory exact-head execution evidence.
-          if (serializationTests.status !== 'FAILED') {
-            throw new Error(`Expected the explicit unit-test criterion to be FAILED from the exact-head failed test check, received ${serializationTests.status}.`);
+          // exact-head execution evidence. At the same time, a generic failed `test` job does
+          // not prove that the specifically requested serialization tests are themselves absent
+          // or failing, so that coverage-specific criterion must remain conservative rather than
+          // being promoted to either PROVEN or FAILED without direct matching evidence.
+          const failedTestCheck = report.checks.find((check) =>
+            /^test$/i.test(check.name) && check.conclusion === 'failure'
+          );
+          if (!failedTestCheck) {
+            throw new Error('Expected the exact-head failed `test` check to be observable in the report.');
+          }
+
+          if (serializationTests.status === 'PROVEN') {
+            throw new Error('A generic test lane must not PROVE serialization-specific test coverage.');
           }
 
           for (const result of [sharedUrl, mobileParity, clearAll]) {
@@ -97,6 +107,10 @@ jobs:
 
           console.log(JSON.stringify({
             verdict: report.verdict,
+            failedTestCheck: {
+              name: failedTestCheck.name,
+              conclusion: failedTestCheck.conclusion
+            },
             criteria: report.results.map((result) => ({
               text: result.requirement.text,
               status: result.status,
