@@ -2,16 +2,19 @@ import type { CheckRunSummary, ClaimResult, RequirementResult } from "./types.js
 
 interface RequiredValidationEvidence {
   label: string;
-  checkPattern: RegExp;
+  matchesCheck(name: string): boolean;
 }
 
 const TEST_SCENARIO_STOP_WORDS = new Set([
-  "test", "tests", "regression", "unit", "integration", "e2e", "end", "to", "the", "a", "an",
-  "and", "or", "that", "this", "with", "whose", "only", "inside", "still", "when", "must", "should"
+  "test", "tests", "regression", "unit", "integration", "e2e", "end", "the", "and", "that", "this",
+  "with", "whose", "only", "inside", "still", "when", "must", "should"
 ]);
 
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function regexEvidence(label: string, pattern: RegExp): RequiredValidationEvidence {
+  return {
+    label,
+    matchesCheck: (name: string) => pattern.test(name)
+  };
 }
 
 function explicitTestScenarioEvidence(text: string): RequiredValidationEvidence | null {
@@ -29,21 +32,13 @@ function explicitTestScenarioEvidence(text: string): RequiredValidationEvidence 
       .filter((token) => token.length >= 4 && !TEST_SCENARIO_STOP_WORDS.has(token))
   )].slice(0, 6);
 
-  if (tokens.length < 2) {
-    return {
-      label: "explicit test scenario",
-      checkPattern: /$a/
-    };
-  }
-
-  const tokenPatterns = tokens.map((token) => new RegExp(`\\b${escapeRegex(token)}\\b`, "i"));
   return {
     label: "explicit test scenario",
-    checkPattern: {
-      test(name: string): boolean {
-        return tokenPatterns.filter((pattern) => pattern.test(name)).length >= 2;
-      }
-    } as RegExp
+    matchesCheck: (name: string) => {
+      if (tokens.length < 2) return false;
+      const normalizedName = name.toLowerCase().replace(/[^a-z0-9]+/g, " ");
+      return tokens.filter((token) => new RegExp(`\\b${token}\\b`, "i").test(normalizedName)).length >= 2;
+    }
   };
 }
 
@@ -54,17 +49,11 @@ function requiredCompoundValidationEvidence(text: string): RequiredValidationEvi
   // resilience lane must not silently prove an explicitly named stress/fault
   // scenario that GitHub never executed on the exact PR head.
   if (/\bfault[- ]injection\b/i.test(text)) {
-    requirements.push({
-      label: "fault-injection testing",
-      checkPattern: /\bfault[- ]injection\b/i
-    });
+    requirements.push(regexEvidence("fault-injection testing", /\bfault[- ]injection\b/i));
   }
 
   if (/\bconcurrenc(?:y|ies)\b/i.test(text)) {
-    requirements.push({
-      label: "concurrency testing",
-      checkPattern: /\bconcurrenc(?:y|ies)\b/i
-    });
+    requirements.push(regexEvidence("concurrency testing", /\bconcurrenc(?:y|ies)\b/i));
   }
 
   const explicitScenario = explicitTestScenarioEvidence(text);
@@ -78,7 +67,7 @@ function hasSuccessfulDirectEvidence(
   checks: CheckRunSummary[]
 ): boolean {
   return checks.some((check) =>
-    requirement.checkPattern.test(check.name)
+    requirement.matchesCheck(check.name)
     && check.status === "completed"
     && check.conclusion === "success"
   );
