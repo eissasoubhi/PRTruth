@@ -20,29 +20,47 @@ jobs:
         with:
           script: |
             const { owner, repo } = context.repo;
-            const associatedPulls = await github.paginate(
-              github.rest.repos.listPullRequestsAssociatedWithCommit,
-              {
-                owner,
-                repo,
-                commit_sha: context.sha,
-                per_page: 100,
-              }
-            );
+            const maxAttempts = 6;
 
-            const mergedIntoMain = associatedPulls.filter((pull) =>
-              pull.merged_at &&
-              pull.base.ref === 'main' &&
-              pull.merge_commit_sha === context.sha
-            );
-
-            if (mergedIntoMain.length !== 1) {
-              core.setFailed(
-                `main provenance violation: expected exactly one merged pull request into main for ${context.sha}; found ${mergedIntoMain.length}.`
+            for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+              const associatedPulls = await github.paginate(
+                github.rest.repos.listPullRequestsAssociatedWithCommit,
+                {
+                  owner,
+                  repo,
+                  commit_sha: context.sha,
+                  per_page: 100,
+                }
               );
-              return;
+
+              const mergedIntoMain = associatedPulls.filter((pull) =>
+                pull.merged_at &&
+                pull.base.ref === 'main' &&
+                pull.merge_commit_sha === context.sha
+              );
+
+              if (mergedIntoMain.length === 1) {
+                core.info(
+                  `main provenance verified from merged PR #${mergedIntoMain[0].number}: ${mergedIntoMain[0].html_url}`
+                );
+                return;
+              }
+
+              if (mergedIntoMain.length > 1) {
+                core.setFailed(
+                  `main provenance violation: expected exactly one merged pull request into main for ${context.sha}; found ${mergedIntoMain.length}.`
+                );
+                return;
+              }
+
+              if (attempt < maxAttempts) {
+                core.info(
+                  `No associated merged PR is indexed for ${context.sha} yet; retrying in 5s (${attempt}/${maxAttempts}).`
+                );
+                await new Promise((resolve) => setTimeout(resolve, 5000));
+              }
             }
 
-            core.info(
-              `main provenance verified from merged PR #${mergedIntoMain[0].number}: ${mergedIntoMain[0].html_url}`
+            core.setFailed(
+              `main provenance violation: expected exactly one merged pull request into main for ${context.sha}; found 0 after ${maxAttempts} attempts.`
             );
