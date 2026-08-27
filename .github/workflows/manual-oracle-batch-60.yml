@@ -1,0 +1,120 @@
+name: Manual oracle batch 60
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-60.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  negative-repository-rule-boundary:
+    name: MistHelper negative repository-rule oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real firmware-source history
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo jmorrison-juniper/MistHelper \
+            --issue 2006 \
+            --pr 2029 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/misthelper-2029.json
+
+      - name: Compare with independent negative repository-rule oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(readFileSync('dogfood-results/misthelper-2029.json', 'utf8')).report;
+
+          if (report.results.length !== 2) {
+            throw new Error(`Expected exactly 2 authoritative Acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const noStaleSource = report.results.find((result) =>
+            /No firmware decision reads the version of `?listSiteDevices`?/i.test(result.requirement.text)
+          );
+          const recordedRule = report.results.find((result) =>
+            /recorded note names which endpoint reports the running version/i.test(result.requirement.text)
+          );
+
+          if (!noStaleSource || !recordedRule) {
+            throw new Error('Expected both firmware-source acceptance criteria to be extracted.');
+          }
+
+          // Independent inspection of issue #2006, merged PR #2029, and exact head
+          // dd2bdb6caa4cc86932eb1dbe04adf4cae0683bbb: the issue requires a repository-wide
+          // negative invariant — no firmware decision may read listSiteDevices.version.
+          // The PR adds a resolver, focused tests, and documentation, while GitHub exposes many
+          // exact-head checks. Those current-head checks may support narrower test/build claims,
+          // but they do not by themselves prove the global negative repository invariant unless
+          // a directly matching static/search guard is observable.
+          const exactHeadChecks = report.checks.filter((check) => check.scope === 'check');
+          const successfulChecks = exactHeadChecks.filter((check) => check.conclusion === 'success');
+
+          if (successfulChecks.length === 0) {
+            throw new Error('Expected successful exact-head CI to be observable for the real oracle.');
+          }
+
+          if (noStaleSource.status === 'PROVEN') {
+            throw new Error('Broad/current-head CI must not PROVE a repository-wide negative invariant without directly matching guard evidence.');
+          }
+
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Overall verdict must not be PROVEN while the repository-wide negative invariant lacks direct observable proof.');
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            successfulExactHeadChecks: successfulChecks.length,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-60
+          path: dogfood-results/misthelper-2029.json
+          if-no-files-found: error
