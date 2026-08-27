@@ -1,0 +1,120 @@
+name: Manual oracle batch 61
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-61.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  azure-live-cleanup-boundary:
+    name: Azure Backup live cleanup oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real Azure Backup cleanup history
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo microsoft/mcp \
+            --issue 3312 \
+            --pr 3336 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/microsoft-mcp-3336.json
+
+      - name: Compare with independent live-cleanup oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/microsoft-mcp-3336.json', 'utf8')
+          ).report;
+
+          if (report.results.length !== 5) {
+            throw new Error(`Expected exactly 5 authoritative acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const resourceGroupDeletion = report.results.find((result) =>
+            /Resource group deletion succeeds without manual intervention/i.test(result.requirement.text)
+          );
+          const idempotentRerun = report.results.find((result) =>
+            /Re-running cleanup is idempotent/i.test(result.requirement.text)
+          );
+
+          if (!resourceGroupDeletion || !idempotentRerun) {
+            throw new Error('Expected the live resource-group deletion and idempotent rerun criteria to be extracted.');
+          }
+
+          // Independent inspection of microsoft/mcp issue #3312, merged PR #3336,
+          // and exact PR head 7077539682a1ea5a1328367a634f7266dc8abe7a:
+          // the PR adds the ordered cleanup script and pipeline hook, but its own
+          // description says live validation will run only after merge. The exact-head
+          // Azure Pipelines check is reported success by GitHub while its check output
+          // explicitly reports one failed test. Neither broad build success nor local
+          // syntax/cmdlet validation can prove that Azure resource-group deletion actually
+          // succeeded in a live subscription, or that rerunning cleanup is idempotent.
+          if (resourceGroupDeletion.status === 'PROVEN') {
+            throw new Error('Exact-head build/static evidence must not PROVE live Azure resource-group deletion without an observed live cleanup run.');
+          }
+          if (idempotentRerun.status === 'PROVEN') {
+            throw new Error('A guarded cleanup implementation must not PROVE live rerun idempotence without an observed repeated cleanup execution.');
+          }
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Overall verdict must not be PROVEN while live cleanup behavior remains unobserved on the exact PR head.');
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            checks: report.checks
+              .filter((check) => check.scope === 'check')
+              .map((check) => ({ name: check.name, status: check.status, conclusion: check.conclusion })),
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-61
+          path: dogfood-results/microsoft-mcp-3336.json
+          if-no-files-found: error
