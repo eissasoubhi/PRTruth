@@ -82,8 +82,21 @@ describe("workflow checkout hardening", () => {
 
     expect(content).toContain("permissions:\n  contents: read");
     expect(content).toContain("publish:\n    name: create GitHub release");
-    expect(content).toContain("permissions:\n      contents: write");
+    expect(content).toContain("permissions:\n      contents: write\n      actions: write");
     expect(content.match(/contents: write/g)).toHaveLength(1);
+    expect(content.match(/actions: write/g)).toHaveLength(1);
+  });
+
+  it("self-heals npm publication after a release created with GITHUB_TOKEN", () => {
+    const content = workflow(".github/workflows/release.yml");
+
+    expect(content).toContain("Check whether released package version already exists on npm");
+    expect(content).toContain("npm_exists: ${{ steps.npm.outputs.exists }}");
+    expect(content).toContain("needs.validate.outputs.exists != 'true' || needs.validate.outputs.npm_exists != 'true'");
+    expect(content).toContain("Dispatch npm publication");
+    expect(content).toContain("github.rest.actions.createWorkflowDispatch");
+    expect(content).toContain("workflow_id: 'npm-publish.yml'");
+    expect(content).toContain("inputs: { tag }");
   });
 
   it("rejects manual release dispatches from branches other than main", () => {
