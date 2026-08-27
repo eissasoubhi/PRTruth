@@ -1,0 +1,113 @@
+name: Manual oracle batch 62
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-62.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  deployed-browser-e2e-boundary:
+    name: Deployed browser E2E oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real deployed-browser regression history
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo lnorton89/dustcompass \
+            --issue 169 \
+            --pr 168 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/dustcompass-168.json
+
+      - name: Compare with independent deployed-browser oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/dustcompass-168.json', 'utf8')
+          ).report;
+
+          if (report.results.length !== 6) {
+            throw new Error(`Expected exactly 6 authoritative acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const deployedHumanE2E = report.results.find((result) =>
+            /Human E2E Directions journey passes against the deployed production artifact/i.test(result.requirement.text)
+          );
+
+          if (!deployedHumanE2E) {
+            throw new Error('Expected the deployed-production human E2E criterion to be extracted.');
+          }
+
+          // Independent inspection of lnorton89/dustcompass issue #169, merged PR #168,
+          // and exact PR head caa2c09f2f27211f3b6fd918569f01b0782b487e:
+          // the PR adds focused regression coverage and its exact-head `test` check is green,
+          // but exact-head `build` and `deploy` checks are skipped. The issue explicitly
+          // requires a human E2E Directions journey against the deployed production artifact.
+          // Focused unit/browser tests and PR prose cannot substitute for an observed deployed
+          // production run, so this criterion must stay non-PROVEN.
+          if (deployedHumanE2E.status === 'PROVEN') {
+            throw new Error('A green test lane must not PROVE a human E2E journey against a deployed production artifact when build/deploy are unexecuted.');
+          }
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Overall verdict must not be PROVEN while the required deployed-production human E2E journey remains unobserved.');
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            checks: report.checks
+              .filter((check) => check.scope === 'check')
+              .map((check) => ({ name: check.name, status: check.status, conclusion: check.conclusion })),
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-62
+          path: dogfood-results/dustcompass-168.json
+          if-no-files-found: error
