@@ -1,0 +1,155 @@
+name: Validate public 0.1.23
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/validate-0.1.23-public.yml"
+
+permissions:
+  contents: read
+  actions: read
+  checks: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Verify exact public npm package and latest tag
+        shell: bash
+        env:
+          NPM_CONFIG_USERCONFIG: /dev/null
+          NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+        run: |
+          set -euo pipefail
+          EXPECTED_VERSION="0.1.23"
+          for attempt in $(seq 1 20); do
+            PUBLISHED_VERSION="$(npm view "prtruth@${EXPECTED_VERSION}" version --silent 2>/dev/null || true)"
+            LATEST_VERSION="$(npm view prtruth dist-tags.latest --silent 2>/dev/null || true)"
+            if [[ "${PUBLISHED_VERSION}" == "${EXPECTED_VERSION}" && "${LATEST_VERSION}" == "${EXPECTED_VERSION}" ]]; then
+              echo "Public npm exposes prtruth@${EXPECTED_VERSION} as latest."
+              exit 0
+            fi
+            if [[ "${attempt}" -eq 20 ]]; then
+              echo "prtruth@${EXPECTED_VERSION} was not publicly resolvable as latest after ${attempt} attempts."
+              exit 1
+            fi
+            sleep 6
+          done
+
+      - name: Verify public CLI, help, and Batch 72 evidence fix
+        shell: bash
+        env:
+          NPM_CONFIG_USERCONFIG: /dev/null
+          NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+        run: |
+          set -euo pipefail
+          EXPECTED_VERSION="0.1.23"
+          TEMP_DIR="$(mktemp -d)"
+          trap 'rm -rf "${TEMP_DIR}"' EXIT
+          cd "${TEMP_DIR}"
+
+          CLI_VERSION="$(npx -y "prtruth@${EXPECTED_VERSION}" --version)"
+          test "${CLI_VERSION}" = "${EXPECTED_VERSION}"
+
+          HELP_OUTPUT="$(npx -y "prtruth@${EXPECTED_VERSION}" --help)"
+          grep -F -- "--issue <number>" <<<"${HELP_OUTPUT}"
+          grep -F -- "--pr <number>" <<<"${HELP_OUTPUT}"
+          grep -F -- "--repo <owner/repo>" <<<"${HELP_OUTPUT}"
+          grep -F -- "--format <format>" <<<"${HELP_OUTPUT}"
+          grep -F -- "--output <path>" <<<"${HELP_OUTPUT}"
+          grep -F -- "--github-summary" <<<"${HELP_OUTPUT}"
+          grep -F -- "--comment" <<<"${HELP_OUTPUT}"
+          grep -F -- "--policy <policy>" <<<"${HELP_OUTPUT}"
+          grep -F -- "--color <mode>" <<<"${HELP_OUTPUT}"
+
+          mkdir -p reports
+          env -u GITHUB_TOKEN npx -y "prtruth@${EXPECTED_VERSION}" verify \
+            --repo gaberoo322/hydra \
+            --issue 4093 \
+            --pr 4226 \
+            --policy report-only \
+            --format json \
+            --output reports/hydra-4226.json
+
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const report = JSON.parse(readFileSync('reports/hydra-4226.json', 'utf8')).report;
+          if (report.results.length !== 6) throw new Error(`Expected 6 acceptance criteria, got ${report.results.length}`);
+          const falseGreen = report.results.find((result) =>
+            /false green|only matches are inside a docstring|evaluates false/i.test(result.requirement?.text ?? '')
+          );
+          const exclusion = report.results.find((result) =>
+            /comments and docstrings|line comments|block comments|python docstrings/i.test(result.requirement?.text ?? '')
+          );
+          const stringLiteral = report.results.find((result) =>
+            /string literals are not excluded|string is still executable intent|must keep counting/i.test(result.requirement?.text ?? '')
+          );
+          if (!falseGreen || !exclusion || !stringLiteral) throw new Error('Missing Batch 72 acceptance criteria');
+          if (falseGreen.status === 'PROVEN') throw new Error('Public 0.1.23 regressed the exact false-green scenario boundary');
+          if (exclusion.status === 'PROVEN') throw new Error('Public 0.1.23 over-proved comment/docstring exclusion semantics');
+          if (stringLiteral.status === 'PROVEN') throw new Error('Public 0.1.23 over-proved string-literal semantics');
+          if (report.verdict === 'PROVEN') throw new Error('Public 0.1.23 overall verdict must not be PROVEN for Batch 72');
+          console.log(`Public 0.1.23 Batch72 falseGreen=${falseGreen.status} verdict=${report.verdict}`);
+          NODE
+
+      - name: Run exact public-tag composite Action
+        uses: eissasoubhi/PRTruth@v0.1.23
+        with:
+          repo: gaberoo322/hydra
+          issue: 4093
+          pr: 4226
+          policy: report-only
+          github_summary: "false"
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build current source
+        run: pnpm build
+
+      - name: Re-run independent current-source Batch 72 oracle
+        shell: bash
+        run: |
+          mkdir -p oracle-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo gaberoo322/hydra \
+            --issue 4093 \
+            --pr 4226 \
+            --policy report-only \
+            --format json \
+            --output oracle-results/hydra-4226.json
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const report = JSON.parse(readFileSync('oracle-results/hydra-4226.json', 'utf8')).report;
+          const falseGreen = report.results.find((result) =>
+            /false green|only matches are inside a docstring|evaluates false/i.test(result.requirement?.text ?? '')
+          );
+          if (!falseGreen || falseGreen.status === 'PROVEN') {
+            throw new Error('Current-source Batch 72 evidence boundary regressed');
+          }
+          if (report.verdict === 'PROVEN') throw new Error('Current-source Batch 72 overall verdict regressed');
+          NODE
