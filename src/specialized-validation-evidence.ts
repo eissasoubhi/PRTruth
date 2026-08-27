@@ -5,6 +5,48 @@ interface RequiredValidationEvidence {
   checkPattern: RegExp;
 }
 
+const TEST_SCENARIO_STOP_WORDS = new Set([
+  "test", "tests", "regression", "unit", "integration", "e2e", "end", "to", "the", "a", "an",
+  "and", "or", "that", "this", "with", "whose", "only", "inside", "still", "when", "must", "should"
+]);
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function explicitTestScenarioEvidence(text: string): RequiredValidationEvidence | null {
+  const match = text.match(
+    /\b(?:regression|unit|integration|e2e|end[- ]to[- ]end)\s+tests?\s*(?:—|–|-|:)\s*([^\n]{3,220})/i
+  );
+  const scenario = match?.[1];
+  if (!scenario) return null;
+
+  const tokens = [...new Set(
+    scenario
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .split(/\s+/)
+      .filter((token) => token.length >= 4 && !TEST_SCENARIO_STOP_WORDS.has(token))
+  )].slice(0, 6);
+
+  if (tokens.length < 2) {
+    return {
+      label: "explicit test scenario",
+      checkPattern: /$a/
+    };
+  }
+
+  const tokenPatterns = tokens.map((token) => new RegExp(`\\b${escapeRegex(token)}\\b`, "i"));
+  return {
+    label: "explicit test scenario",
+    checkPattern: {
+      test(name: string): boolean {
+        return tokenPatterns.filter((pattern) => pattern.test(name)).length >= 2;
+      }
+    } as RegExp
+  };
+}
+
 function requiredCompoundValidationEvidence(text: string): RequiredValidationEvidence[] {
   const requirements: RequiredValidationEvidence[] = [];
 
@@ -24,6 +66,9 @@ function requiredCompoundValidationEvidence(text: string): RequiredValidationEvi
       checkPattern: /\bconcurrenc(?:y|ies)\b/i
     });
   }
+
+  const explicitScenario = explicitTestScenarioEvidence(text);
+  if (explicitScenario) requirements.push(explicitScenario);
 
   return requirements;
 }
