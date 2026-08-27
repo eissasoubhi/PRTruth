@@ -1,0 +1,113 @@
+name: Manual oracle batch 57
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-57.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  browser-self-report-boundary:
+    name: Vizimap browser self-report oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real browser-acceptance history
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo m3rrym4n/vizimap \
+            --issue 48 \
+            --pr 51 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/vizimap-51.json
+
+      - name: Compare with independent browser self-report oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(readFileSync('dogfood-results/vizimap-51.json', 'utf8')).report;
+
+          if (report.results.length !== 5) {
+            throw new Error(`Expected exactly 5 authoritative Acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const visibleFields = report.results.find((result) => /visible.*editable.*Chart Title.*X-axis Label/i.test(result.requirement.text));
+          const immediateRender = report.results.find((result) => /Changing either.*Chart view.*update immediately/i.test(result.requirement.text));
+          const persistence = report.results.find((result) => /Save writes both values.*Open restores/i.test(result.requirement.text));
+          const legacy = report.results.find((result) => /older roadmap JSON.*missing these keys.*fall(?:ing)? back/i.test(result.requirement.text));
+          const noRegression = report.results.find((result) => /No console errors.*single.*index\.html.*no new dependencies/i.test(result.requirement.text));
+
+          if (!visibleFields || !immediateRender || !persistence || !legacy || !noRegression) {
+            throw new Error('Expected all five vizimap browser/persistence acceptance criteria to be extracted.');
+          }
+
+          // Independent inspection of issue #48, PR #51, diff, and exact head
+          // 450abb4b740a67bb1727e668b5ab7687b17a8506: the PR description reports
+          // headless Chrome acceptance checks, JS parsing, HTML parsing, and
+          // git diff --check, but GitHub exposes zero exact-head check runs.
+          // The diff strongly suggests implementation, but self-reported local
+          // execution and candidate patch evidence are not observable execution
+          // evidence and must not become deterministic PROVEN verdicts.
+          for (const result of [visibleFields, immediateRender, persistence, legacy, noRegression]) {
+            if (result.status === 'PROVEN') {
+              throw new Error(`Self-reported browser validation without exact-head checks must not PROVE: ${result.requirement.text}`);
+            }
+          }
+
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Overall verdict must not be PROVEN from PR prose and implementation-looking diff alone.');
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-57
+          path: dogfood-results/vizimap-51.json
+          if-no-files-found: error
