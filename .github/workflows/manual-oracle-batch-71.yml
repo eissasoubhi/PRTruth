@@ -1,0 +1,132 @@
+name: Manual oracle batch 71
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-71.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  emulator-historical-proof-boundary:
+    name: Emulator historical-proof oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real Android emulator regression oracle
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo alexeygrigorev/pocketshell \
+            --issue 2338 \
+            --pr 2349 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/pocketshell-2349.json
+
+      - name: Compare with independent emulator/history oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/pocketshell-2349.json', 'utf8')
+          ).report;
+
+          // Independent inspection of alexeygrigorev/pocketshell issue #2338 and merged PR #2349:
+          // - the issue defines four explicit acceptance criteria;
+          // - criterion 1 requires historical evidence: reproduced red on origin/main and green
+          //   with the fix on a real emulator + Docker agents fixture;
+          // - criterion 2 requires a class-covering second-launch regression test;
+          // - criterion 3 requires five named journey classes green end-to-end;
+          // - criterion 4 requires the earlier #2294 cold-restore regression to remain fixed;
+          // - PR #2349 reports reviewer/local emulator evidence in prose, but its exact head
+          //   bec7edfa4470683fbf8a75927818da57a97445fc exposes the load-bearing emulator subset,
+          //   aggregate emulator verdict, and Docker integration jobs as skipped in GitHub;
+          // - exact-head JVM unit tests are green, which is useful current-head evidence but does
+          //   not prove the historical red-before/green-after criterion or the skipped emulator
+          //   end-to-end suite merely because the PR was merged and its description says it ran.
+
+          if (report.results.length !== 4) {
+            throw new Error(`Expected exactly 4 authoritative acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const historical = report.results.find((result) =>
+            /reproduced red|origin\/main|green with the fix|real emulator/i.test(result.requirement.text)
+          );
+          if (!historical) {
+            throw new Error('Expected the red-on-main / green-with-fix historical acceptance criterion.');
+          }
+          if (historical.status === 'PROVEN') {
+            throw new Error('Current-head CI and PR prose must not PROVE historical red-before/green-after emulator reproduction.');
+          }
+
+          const journeySet = report.results.find((result) =>
+            /MobileSpuriousReconnectE2eTest|MultiSessionSwitchJourneyE2eTest|StableWifiNoSpuriousReconnectE2eTest/i.test(result.requirement.text)
+          );
+          if (!journeySet) {
+            throw new Error('Expected the named multi-class emulator journey acceptance criterion.');
+          }
+          if (journeySet.status === 'PROVEN') {
+            throw new Error('Skipped exact-head emulator journey jobs plus PR-reported local evidence must not PROVE the named end-to-end journey set.');
+          }
+
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Overall verdict must not be PROVEN while historical and skipped-emulator criteria lack direct observable evidence.');
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            })),
+            checks: report.checks.map((check) => ({
+              name: check.name,
+              scope: check.scope,
+              status: check.status,
+              conclusion: check.conclusion
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-71
+          path: dogfood-results/pocketshell-2349.json
+          if-no-files-found: error
