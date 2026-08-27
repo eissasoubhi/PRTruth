@@ -22,6 +22,15 @@ describe("main merge provenance workflow", () => {
     expect(workflowText).toContain("per_page: 100");
     expect(workflowText).toContain("pull.base.ref === 'main'");
     expect(workflowText).toContain("pull.merge_commit_sha === context.sha");
-    expect(workflowText).toContain("mergedIntoMain.length !== 1");
+    expect(workflowText).toContain("mergedIntoMain.length === 1");
+    expect(workflowText).toContain("mergedIntoMain.length > 1");
+  });
+
+  it("retries only the transient zero-match state while GitHub indexes the merge association", () => {
+    expect(workflowText).toContain("const maxAttempts = 6");
+    expect(workflowText).toContain("attempt < maxAttempts");
+    expect(workflowText).toContain("retrying in 5s");
+    expect(workflowText).toContain("setTimeout(resolve, 5000)");
+    expect(workflowText).toContain("found 0 after ${maxAttempts} attempts");
   });
 });
