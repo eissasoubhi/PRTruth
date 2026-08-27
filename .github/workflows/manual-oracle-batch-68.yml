@@ -1,0 +1,131 @@
+name: Manual oracle batch 68
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-68.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  global-caller-invariant-evidence-boundary:
+    name: Global caller-invariant evidence boundary oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real global-caller invariant oracle
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo KaotoIO/kaoto \
+            --issue 3791 \
+            --pr 3792 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/kaoto-3792.json
+
+      - name: Compare with independent global-caller invariant oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/kaoto-3792.json', 'utf8')
+          ).report;
+
+          if (report.results.length !== 5) {
+            throw new Error(`Expected exactly 5 acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const deletedMethodsCriterion = report.results.find((result) =>
+            /getUpdatedDefinition.*applyParametersFromSyntax.*getComponentNameFromUri.*deleted/i.test(result.requirement.text)
+          );
+          const groupACriterion = report.results.find((result) =>
+            /all 6 Group A callers.*getParsedDefinition/i.test(result.requirement.text)
+          );
+          const groupBCriterion = report.results.find((result) =>
+            /all 20 Group B callers remain unchanged.*getNodeDefinition/i.test(result.requirement.text)
+          );
+          const testsCriterion = report.results.find((result) =>
+            /all existing and new tests pass/i.test(result.requirement.text)
+          );
+
+          if (!deletedMethodsCriterion || !groupACriterion || !groupBCriterion || !testsCriterion) {
+            throw new Error('Expected representative Kaoto acceptance criteria to be extracted.');
+          }
+
+          // Independent inspection of KaotoIO/kaoto issue #3791, merged PR #3792,
+          // exact PR head c2975b0f98bdd23a33692df34fedf8fd3962a42f, its diff, and exact-head checks:
+          // GitHub exposes a large successful CI matrix including build and browser tests.
+          // The PR diff also visibly removes the named legacy methods and migrates several callers.
+          // However, the stronger quantified/global claims that *all 6* Group A callers were
+          // migrated and *all 20* Group B callers remained unchanged are repository-wide and,
+          // for Group B, historical base->head invariants. Generic current-head green CI and PR
+          // prose must not automatically prove those exact cardinality/completeness claims.
+          if (groupACriterion.status === 'PROVEN') {
+            throw new Error('Broad current-head CI must not PROVE the exact global claim that all 6 Group A callers were migrated without directly matching deterministic evidence.');
+          }
+
+          if (groupBCriterion.status === 'PROVEN') {
+            throw new Error('Current-head CI must not PROVE the historical/global claim that all 20 Group B callers remained unchanged.');
+          }
+
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Overall verdict must not be PROVEN while quantified global caller invariants remain without direct deterministic evidence.');
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            })),
+            checks: report.checks.map((check) => ({
+              name: check.name,
+              scope: check.scope,
+              status: check.status,
+              conclusion: check.conclusion
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-68
+          path: dogfood-results/kaoto-3792.json
+          if-no-files-found: error
