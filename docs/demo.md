@@ -159,3 +159,9 @@ That gives you a much better signal than testing only a PR where everything is g
 ## Why the demo stays conservative
 
 This page intentionally does not turn relevant diff lines, textual similarity, or hidden commands into proof. The public walkthrough and the verifier are held to the same evidence standard.
+
+## Next steps
+
+- Follow the [GitHub Actions quickstart](github-actions.md).
+- See the [AI coding-agent workflow playbook](agent-workflows.md).
+- Read [How PRTruth works](how-it-works.md) for the evidence model and current limitations.
