@@ -1,0 +1,127 @@
+name: Manual oracle batch 65
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-65.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  simulcast-loopback-evidence-boundary:
+    name: Simulcast loopback evidence boundary oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real simulcast-answerer oracle
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo BechsteinDigital/callora-voip-sdk \
+            --issue 369 \
+            --pr 373 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/callora-373.json
+
+      - name: Compare with independent simulcast-loopback oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/callora-373.json', 'utf8')
+          ).report;
+
+          if (report.results.length !== 7) {
+            throw new Error(`Expected exactly 7 acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const loopbackCriterion = report.results.find((result) =>
+            /SDK.?SDK loopback proves both directions without a browser/i.test(result.requirement.text)
+          );
+          const nonSimulcastCriterion = report.results.find((result) =>
+            /No Regress.*without.*simulcast|ohne Simulcast.*byte-identisch/i.test(result.requirement.text)
+          );
+
+          if (!loopbackCriterion || !nonSimulcastCriterion) {
+            throw new Error('Expected loopback and non-simulcast regression acceptance criteria to be extracted.');
+          }
+
+          // Independent inspection of BechsteinDigital/callora-voip-sdk issue #369,
+          // merged PR #373, exact PR head b9c52c8097ec4cf9a4735b0b81a3e84fbdd85ab2,
+          // its successful ci workflow, and the exact source workflow at that SHA:
+          // the PR prose says Core.IntegrationTests included two real-media SDK<->SDK loopback tests,
+          // but GitHub exposes only broad executable steps such as "Test + Coverage (Non-Core)",
+          // "Interop tests (Docker/Asterisk)", and browser interop. The workflow command is a broad
+          // dotnet-test filter and does not directly identify the named WebRtcSimulcastPeerToPeerTests.
+          // Therefore the specific real-media loopback acceptance criterion must not become PROVEN
+          // solely from broad green test/interop lanes or the PR's self-reported test counts.
+          if (loopbackCriterion.status === 'PROVEN') {
+            throw new Error('Broad green test/interop lanes must not PROVE the specifically named SDK-to-SDK real-media loopback criterion without directly matching observable execution evidence.');
+          }
+
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Overall verdict must not be PROVEN while the specific SDK-to-SDK real-media loopback criterion lacks directly matching observable execution evidence.');
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            loopback: {
+              text: loopbackCriterion.requirement.text,
+              status: loopbackCriterion.status,
+              reason: loopbackCriterion.reason
+            },
+            nonSimulcastRegression: {
+              text: nonSimulcastCriterion.requirement.text,
+              status: nonSimulcastCriterion.status,
+              reason: nonSimulcastCriterion.reason
+            },
+            checks: report.checks.map((check) => ({
+              name: check.name,
+              scope: check.scope,
+              status: check.status,
+              conclusion: check.conclusion
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-65
+          path: dogfood-results/callora-373.json
+          if-no-files-found: error
