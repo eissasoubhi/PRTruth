@@ -27,6 +27,7 @@ jobs:
     outputs:
       tag: ${{ steps.release.outputs.tag }}
       exists: ${{ steps.existing.outputs.exists }}
+      npm_exists: ${{ steps.npm.outputs.exists }}
 
     steps:
       - name: Checkout
@@ -86,6 +87,35 @@ jobs:
               core.info(`Release ${tag} does not exist yet.`);
               core.setOutput('exists', 'false');
             }
+
+      - name: Check whether released package version already exists on npm
+        id: npm
+        if: steps.existing.outputs.exists == 'true'
+        shell: bash
+        env:
+          NPM_CONFIG_USERCONFIG: /dev/null
+          NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+        run: |
+          PACKAGE_NAME="$(node -p "require('./package.json').name")"
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          PACKAGE_SPEC="${PACKAGE_NAME}@${PACKAGE_VERSION}"
+
+          set +e
+          LOOKUP_OUTPUT="$(npm view "${PACKAGE_SPEC}" version --json 2>&1)"
+          LOOKUP_STATUS=$?
+          set -e
+
+          if [[ "${LOOKUP_STATUS}" -eq 0 ]]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "${PACKAGE_SPEC} is already published."
+          elif grep -Eq 'E404|404 Not Found|is not in this registry' <<<"${LOOKUP_OUTPUT}"; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "${PACKAGE_SPEC} is not published yet; npm publication recovery is required."
+          else
+            echo "Unable to determine whether ${PACKAGE_SPEC} already exists in the public npm registry." >&2
+            printf '%s\n' "${LOOKUP_OUTPUT}" >&2
+            exit "${LOOKUP_STATUS}"
+          fi
 
       - name: Validate automatic release source
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.existing.outputs.exists != 'true'
@@ -149,12 +179,14 @@ jobs:
   publish:
     name: create GitHub release
     needs: validate
-    if: needs.validate.outputs.exists != 'true'
+    if: needs.validate.outputs.exists != 'true' || needs.validate.outputs.npm_exists != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
     steps:
       - name: Create tag and GitHub release
+        if: needs.validate.outputs.exists != 'true'
         uses: actions/github-script@v9
         env:
           RELEASE_TAG: ${{ needs.validate.outputs.tag }}
@@ -190,3 +222,21 @@ jobs:
               prerelease: false,
             });
             core.info(`Created release ${release.data.html_url}`);
+
+      - name: Dispatch npm publication
+        if: needs.validate.outputs.npm_exists != 'true'
+        uses: actions/github-script@v9
+        env:
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+        with:
+          script: |
+            const tag = process.env.RELEASE_TAG;
+            const { owner, repo } = context.repo;
+            await github.rest.actions.createWorkflowDispatch({
+              owner,
+              repo,
+              workflow_id: 'npm-publish.yml',
+              ref: 'main',
+              inputs: { tag },
+            });
+            core.info(`Dispatched npm publication for ${tag}.`);
