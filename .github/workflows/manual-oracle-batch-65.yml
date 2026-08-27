@@ -70,10 +70,10 @@ jobs:
           }
 
           const loopbackCriterion = report.results.find((result) =>
-            /SDK.?SDK loopback proves both directions without a browser/i.test(result.requirement.text)
+            /SDK.?SDK.*Loopback.*beide Richtungen.*Browser/i.test(result.requirement.text)
           );
           const nonSimulcastCriterion = report.results.find((result) =>
-            /No Regress.*without.*simulcast|ohne Simulcast.*byte-identisch/i.test(result.requirement.text)
+            /Kein Regress.*ohne Simulcast/i.test(result.requirement.text)
           );
 
           if (!loopbackCriterion || !nonSimulcastCriterion) {
