@@ -70,7 +70,7 @@ jobs:
           const visibleFields = report.results.find((result) => /visible.*editable.*Chart Title.*X-axis Label/i.test(result.requirement.text));
           const immediateRender = report.results.find((result) => /Changing either.*Chart view.*update immediately/i.test(result.requirement.text));
           const persistence = report.results.find((result) => /Save writes both values.*Open restores/i.test(result.requirement.text));
-          const legacy = report.results.find((result) => /older roadmap JSON.*missing these keys.*fallback/i.test(result.requirement.text));
+          const legacy = report.results.find((result) => /older roadmap JSON.*missing these keys.*fall(?:ing)? back/i.test(result.requirement.text));
           const noRegression = report.results.find((result) => /No console errors.*single.*index\.html.*no new dependencies/i.test(result.requirement.text));
 
           if (!visibleFields || !immediateRender || !persistence || !legacy || !noRegression) {
