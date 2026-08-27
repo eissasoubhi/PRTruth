@@ -1,0 +1,134 @@
+name: Manual oracle batch 66
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-66.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  macos-dock-runtime-evidence-boundary:
+    name: macOS Dock runtime evidence boundary oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real macOS Dock runtime oracle
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo rp-pipecodes/work-journal-ai \
+            --issue 98 \
+            --pr 103 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/work-journal-ai-103.json
+
+      - name: Compare with independent macOS runtime oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/work-journal-ai-103.json', 'utf8')
+          ).report;
+
+          if (report.results.length !== 7) {
+            throw new Error(`Expected exactly 7 acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const cmdTabCriterion = report.results.find((result) =>
+            /Cmd\+Tab.*Dock icon/i.test(result.requirement.text)
+          );
+          const dockClickCriterion = report.results.find((result) =>
+            /Clicking the Dock icon.*no Main Window.*History/i.test(result.requirement.text)
+          );
+          const repeatCriterion = report.results.find((result) =>
+            /Opening, closing and reopening.*no stranded Dock icon/i.test(result.requirement.text)
+          );
+          const trayCriterion = report.results.find((result) =>
+            /Tray Menu.*Hotkeys.*Tray Count.*identically/i.test(result.requirement.text)
+          );
+
+          if (!cmdTabCriterion || !dockClickCriterion || !repeatCriterion || !trayCriterion) {
+            throw new Error('Expected representative macOS runtime acceptance criteria to be extracted.');
+          }
+
+          // Independent inspection of rp-pipecodes/work-journal-ai issue #98,
+          // merged PR #103, exact PR head 4049328169b04ed38296f2cb0365c82160f6a30e,
+          // and its single successful GitHub Actions check:
+          // the PR reports cargo/unit/frontend validation as green but explicitly says the
+          // activation-policy flip, Cmd+Tab reachability, and Dock-click behavior were not
+          // verified at macOS runtime and still require a manual pnpm tauri:dev pass.
+          // Therefore current generic CI and state-machine tests must not PROVE those stronger
+          // end-user macOS runtime behaviors.
+          for (const criterion of [cmdTabCriterion, dockClickCriterion, repeatCriterion, trayCriterion]) {
+            if (criterion.status === 'PROVEN') {
+              throw new Error(`Generic green CI must not PROVE unexecuted macOS runtime behavior: ${criterion.requirement.text}`);
+            }
+          }
+
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Overall verdict must not be PROVEN while required macOS runtime behavior remains unverified.');
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            representativeRuntimeCriteria: [
+              cmdTabCriterion,
+              dockClickCriterion,
+              repeatCriterion,
+              trayCriterion
+            ].map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            })),
+            checks: report.checks.map((check) => ({
+              name: check.name,
+              scope: check.scope,
+              status: check.status,
+              conclusion: check.conclusion
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-66
+          path: dogfood-results/work-journal-ai-103.json
+          if-no-files-found: error
