@@ -1,0 +1,134 @@
+name: Manual oracle batch 69
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-69.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  locale-lighthouse-review-evidence-boundary:
+    name: Locale Lighthouse and reviewer evidence boundary oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real Portuguese locale oracle
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo wraith-protocol/www \
+            --issue 134 \
+            --pr 142 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/wraith-www-142.json
+
+      - name: Compare with independent locale/review oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/wraith-www-142.json', 'utf8')
+          ).report;
+
+          if (report.results.length !== 6) {
+            throw new Error(`Expected exactly 6 issue acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const parityCriterion = report.results.find((result) =>
+            /CI parity gate fails on introduced drift/i.test(result.requirement.text)
+          );
+          const reviewerCriterion = report.results.find((result) =>
+            /Native Portuguese reviewer sign-off recorded/i.test(result.requirement.text)
+          );
+          const buildCriterion = report.results.find((result) =>
+            /Build passes/i.test(result.requirement.text)
+          );
+          const lighthouseCriterion = report.results.find((result) =>
+            /Lighthouse Perf\/SEO stay.*90.*PT routes/i.test(result.requirement.text)
+          );
+
+          if (!parityCriterion || !reviewerCriterion || !buildCriterion || !lighthouseCriterion) {
+            throw new Error('Expected representative locale acceptance criteria to be extracted from issue #134.');
+          }
+
+          // Independent inspection of wraith-protocol/www issue #134 and merged PR #142:
+          // - the issue requires six criteria, including a native Portuguese reviewer sign-off
+          //   and Lighthouse Perf/SEO >= 90 specifically on PT routes;
+          // - the PR description's own acceptance checklist omits the reviewer-signoff criterion;
+          // - exact PR head 6ab8801322f2214f855a8d17740255d271d547be has green build,
+          //   lint:i18n, Playwright a11y, and generic Lighthouse mobile/desktop steps;
+          // - the observable Lighthouse step names do not identify PT routes or expose an exact
+          //   PT-route >=90 measurement in the structured evidence inspected here.
+          // Therefore generic Lighthouse success must not automatically prove the stronger
+          // locale-scoped quantitative criterion, and merge/issue closure must not substitute for
+          // the missing explicit reviewer sign-off evidence.
+          if (reviewerCriterion.status === 'PROVEN') {
+            throw new Error('Merged/closed state or PR prose must not PROVE the required native Portuguese reviewer sign-off without directly matching trusted review evidence.');
+          }
+
+          if (lighthouseCriterion.status === 'PROVEN') {
+            throw new Error('Generic successful Lighthouse mobile/desktop checks must not PROVE >=90 specifically on PT routes without directly matching locale-scoped quantitative evidence.');
+          }
+
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Overall verdict must not be PROVEN while reviewer-signoff and PT-route Lighthouse evidence remain unproven.');
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            })),
+            checks: report.checks.map((check) => ({
+              name: check.name,
+              scope: check.scope,
+              status: check.status,
+              conclusion: check.conclusion
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-69
+          path: dogfood-results/wraith-www-142.json
+          if-no-files-found: error
