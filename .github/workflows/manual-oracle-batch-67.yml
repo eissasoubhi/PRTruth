@@ -1,0 +1,129 @@
+name: Manual oracle batch 67
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-67.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  toctou-race-history-evidence-boundary:
+    name: TOCTOU race-history evidence boundary oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real TOCTOU race-history oracle
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo fatal10110/acis_golang \
+            --issue 1948 \
+            --pr 1962 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/acis-golang-1962.json
+
+      - name: Compare with independent TOCTOU race-history oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/acis-golang-1962.json', 'utf8')
+          ).report;
+
+          if (report.results.length !== 3) {
+            throw new Error(`Expected exactly 3 acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const inFlightCriterion = report.results.find((result) =>
+            /autosave write in flight.*detach.*offline write/i.test(result.requirement.text)
+          );
+          const preFixCriterion = report.results.find((result) =>
+            /regression test.*reproduces the race deterministically.*fails without the fix/i.test(result.requirement.text)
+          );
+          const onlineStateCriterion = report.results.find((result) =>
+            /characters\.online.*never observably reads 1.*finished logging out/i.test(result.requirement.text)
+          );
+
+          if (!inFlightCriterion || !preFixCriterion || !onlineStateCriterion) {
+            throw new Error('Expected all three TOCTOU acceptance criteria to be extracted.');
+          }
+
+          // Independent inspection of fatal10110/acis_golang issue #1948,
+          // merged PR #1962, exact PR head 35f0c8f5cc24a5b428afd0bd3fabdb8b8b674af6,
+          // and its exact-head GitHub checks:
+          // GitHub exposes successful Go build/vet/test and CodeQL checks. The PR prose also
+          // reports that the new deterministic regression test failed 5/5 on locally reverted
+          // pre-fix code and passed 10/10 with the fix. The exact-head CI, however, only executes
+          // the fixed tree. It cannot prove the historical counterfactual that the same test
+          // fails on the pre-fix tree, and a generic green Test step is not direct evidence of
+          // the stronger observable online-state invariant requested by the issue.
+          if (preFixCriterion.status === 'PROVEN') {
+            throw new Error('Current-head green CI must not PROVE the historical requirement that the regression test fails without the fix.');
+          }
+
+          if (onlineStateCriterion.status === 'PROVEN') {
+            throw new Error('Generic current-head tests must not PROVE the specifically requested online-state invariant without directly matching observable execution evidence.');
+          }
+
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Overall verdict must not be PROVEN while historical pre-fix failure evidence remains unobserved.');
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            criteria: [inFlightCriterion, preFixCriterion, onlineStateCriterion].map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            })),
+            checks: report.checks.map((check) => ({
+              name: check.name,
+              scope: check.scope,
+              status: check.status,
+              conclusion: check.conclusion
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-67
+          path: dogfood-results/acis-golang-1962.json
+          if-no-files-found: error
