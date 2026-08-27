@@ -10,6 +10,7 @@ const LIST_ITEM = /^\s*(?:[-*+]|\d+[.)])\s+(.+)$/;
 const LABELED_CRITERION = /^\s*(?:AC|REQ|CRITERION)[-_ ]?\d+(?:\s*\[[^\]]+\])?\s*[:.)-]\s*(.*)$/i;
 const EXPLICIT_ACCEPTANCE_SECTION = /^(?:acceptance(?: criteria)?|definition of done|success criteria|criteria)(?:\s*\([^)]*\))?$/i;
 const ACCEPTANCE_SECTION = /^(?:acceptance(?: criteria)?|requirements?|definition of done|success criteria|criteria)(?:\s*\([^)]*\))?$/i;
+const ACCEPTANCE_TEST_SECTION = /^(?:.+\s+)?acceptance tests?(?:\s*\([^)]*\))?$/i;
 const EXPECTED_SECTION = /^(?:expected behavior|desired behavior|expected result|desired result)$/i;
 const CHANGE_SECTION = /^(?:recommended change|proposed change)(?:\s*\([^)]*\))?$/i;
 const EXCLUDED_SECTION = /^(?:contributor checklist|checklist|initial checks?|prerequisites?|affected components?|evidence|build scans?|issue reasons?|out of scope|to reproduce|steps? to reproduce|reproduction(?: steps?)?|how (?:has this been )?tested|testing instructions?|references?|technical notes?|screenshots?|additional notes?)$/i;
@@ -31,6 +32,7 @@ function normalizeHeading(value: string): string {
 function isKnownSectionHeading(value: string): boolean {
   return (
     ACCEPTANCE_SECTION.test(value) ||
+    ACCEPTANCE_TEST_SECTION.test(value) ||
     EXPECTED_SECTION.test(value) ||
     CHANGE_SECTION.test(value) ||
     EXCLUDED_SECTION.test(value)
@@ -287,22 +289,87 @@ function extractLabeledAcceptanceCriteria(
   return requirements;
 }
 
+function extractAcceptanceTestSections(lines: string[]): Requirement[] {
+  let section: MarkdownHeading | null = null;
+  let paragraph: string[] = [];
+  const requirements: Requirement[] = [];
+
+  const flushParagraph = () => {
+    const text = normalizeText(paragraph.join(" "));
+    paragraph = [];
+    if (text.length < 8) return;
+    requirements.push({
+      id: `REQ-${requirements.length + 1}`,
+      text,
+      source: "acceptance-section"
+    });
+  };
+
+  for (const line of lines) {
+    const heading = parseHeading(line);
+    if (heading) {
+      if (section && closesSection(section, heading)) {
+        flushParagraph();
+        section = null;
+      }
+      if (ACCEPTANCE_TEST_SECTION.test(heading.text)) {
+        flushParagraph();
+        section = heading;
+      }
+      continue;
+    }
+
+    if (!section) continue;
+
+    const item = line.match(LIST_ITEM);
+    if (item) {
+      flushParagraph();
+      const requirement = listRequirement(
+        item[1] ?? "",
+        "acceptance-section",
+        requirements.length + 1
+      );
+      if (requirement) requirements.push(requirement);
+      continue;
+    }
+
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushParagraph();
+      continue;
+    }
+    if (/^>|^<!--/.test(trimmed)) continue;
+    paragraph.push(trimmed);
+  }
+
+  flushParagraph();
+  return requirements;
+}
+
 function extractAcceptanceSections(lines: string[]): Requirement[] {
+  const acceptanceTests = extractAcceptanceTestSections(lines);
+  const appendAcceptanceTests = (requirements: Requirement[]) => [
+    ...requirements,
+    ...acceptanceTests
+  ];
+
   const inline = extractInlineAcceptance(lines);
-  if (inline.length > 0) return inline;
+  if (inline.length > 0) return appendAcceptanceTests(inline);
 
   const explicitLabeled = extractLabeledAcceptanceCriteria(lines, EXPLICIT_ACCEPTANCE_SECTION);
-  if (explicitLabeled.length > 0) return explicitLabeled;
+  if (explicitLabeled.length > 0) return appendAcceptanceTests(explicitLabeled);
   const explicitList = extractListSections(
     lines,
     EXPLICIT_ACCEPTANCE_SECTION,
     "acceptance-section"
   );
-  if (explicitList.length > 0) return explicitList;
+  if (explicitList.length > 0) return appendAcceptanceTests(explicitList);
 
   const labeled = extractLabeledAcceptanceCriteria(lines);
-  if (labeled.length > 0) return labeled;
-  return extractListSections(lines, ACCEPTANCE_SECTION, "acceptance-section");
+  if (labeled.length > 0) return appendAcceptanceTests(labeled);
+  const list = extractListSections(lines, ACCEPTANCE_SECTION, "acceptance-section");
+  if (list.length > 0) return appendAcceptanceTests(list);
+  return acceptanceTests;
 }
 
 function extractChangeSections(lines: string[]): Requirement[] {
