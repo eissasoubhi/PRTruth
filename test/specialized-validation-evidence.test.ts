@@ -82,6 +82,51 @@ describe("specialized validation evidence guard", () => {
     expect(result.reason).toContain("concurrency testing");
   });
 
+  it("does not let a generic test lane prove an explicit regression-test scenario", () => {
+    const text = "Regression test — false green: an occurrences assertion whose only matches are inside a docstring evaluates FALSE";
+    const result = guardSpecializedValidationRequirement(
+      provenRequirement(text),
+      [
+        check("test", "success"),
+        check("mutation-test", "success"),
+        check("test / Run tests and verify count", "success")
+      ]
+    );
+
+    expect(result.status).toBe("UNPROVEN");
+    expect(result.reason).toContain("explicit test scenario");
+  });
+
+  it("applies the explicit-scenario ceiling to completion claims too", () => {
+    const text = "Regression test — false green: an occurrences assertion whose only matches are inside a docstring evaluates FALSE";
+    const result = guardSpecializedValidationClaim(
+      provenClaim(text),
+      [check("unit tests", "success")]
+    );
+
+    expect(result.status).toBe("UNPROVEN");
+    expect(result.reason).toContain("explicit test scenario");
+  });
+
+  it("accepts directly matching successful evidence for an explicit regression-test scenario", () => {
+    const text = "Regression test — false green: an occurrences assertion whose only matches are inside a docstring evaluates FALSE";
+    const result = guardSpecializedValidationRequirement(
+      provenRequirement(text),
+      [check("false-green occurrences regression", "success")]
+    );
+
+    expect(result.status).toBe("PROVEN");
+  });
+
+  it("does not turn ordinary regression-test status into a scenario-specific requirement", () => {
+    const result = guardSpecializedValidationRequirement(
+      provenRequirement("Regression tests pass"),
+      [check("regression tests", "success")]
+    );
+
+    expect(result.status).toBe("PROVEN");
+  });
+
   it("does not affect unrelated health-check requirements", () => {
     const result = guardSpecializedValidationRequirement(
       provenRequirement("Health checks pass"),

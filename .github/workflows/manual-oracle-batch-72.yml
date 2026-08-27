@@ -1,0 +1,139 @@
+name: Manual oracle batch 72
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-72.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  lexical-semantic-gate-boundary:
+    name: Lexical vs semantic gate oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real lexical-gate regression oracle
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo gaberoo322/hydra \
+            --issue 4093 \
+            --pr 4226 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/hydra-4226.json
+
+      - name: Compare with independent lexical-vs-semantic oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/hydra-4226.json', 'utf8')
+          ).report;
+
+          // Independent inspection of gaberoo322/hydra issue #4093 and merged PR #4226:
+          // - the scoped issue defines six explicit acceptance criteria;
+          // - the behavioral contract is subtle: comment/docstring occurrences must be excluded
+          //   for .ts/.mts/.py/.sh while string-literal occurrences must continue to count;
+          // - PR #4226's exact head 4e52ab3ec9be3de14bd43107ab8e386a0c20cf4d has a broad
+          //   successful `test` job plus many other successful checks;
+          // - the PR body names precise regression tests, but PR prose is not execution evidence;
+          // - therefore broad green CI must not by itself prove the exact lexical-vs-semantic
+          //   behavior of the first four acceptance criteria unless directly matching observable
+          //   test/step evidence is available.
+
+          if (report.results.length !== 6) {
+            throw new Error(`Expected exactly 6 authoritative acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const exclusion = report.results.find((result) =>
+            /comments and docstrings|line comments|block comments|python docstrings/i.test(result.requirement.text)
+          );
+          if (!exclusion) {
+            throw new Error('Expected the comments/docstrings exclusion acceptance criterion.');
+          }
+          if (exclusion.status === 'PROVEN') {
+            throw new Error('A broad green test lane must not by itself PROVE exact multi-language comment/docstring exclusion semantics.');
+          }
+
+          const falseGreen = report.results.find((result) =>
+            /false green|only matches are inside a docstring|evaluates false/i.test(result.requirement.text)
+          );
+          if (!falseGreen) {
+            throw new Error('Expected the false-green regression acceptance criterion.');
+          }
+          if (falseGreen.status === 'PROVEN') {
+            throw new Error('PR prose naming a regression test plus generic green CI must not by itself PROVE the exact false-green regression scenario.');
+          }
+
+          const stringLiteral = report.results.find((result) =>
+            /string literals are not excluded|string is still executable intent|must keep counting/i.test(result.requirement.text)
+          );
+          if (!stringLiteral) {
+            throw new Error('Expected the string-literal preservation acceptance criterion.');
+          }
+          if (stringLiteral.status === 'PROVEN') {
+            throw new Error('Generic green CI must not by itself PROVE the precise string-literal counting contract.');
+          }
+
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Overall verdict must not be PROVEN while precise lexical gate semantics lack directly matching observable evidence.');
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            })),
+            checks: report.checks.map((check) => ({
+              name: check.name,
+              scope: check.scope,
+              status: check.status,
+              conclusion: check.conclusion
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-72
+          path: dogfood-results/hydra-4226.json
+          if-no-files-found: error

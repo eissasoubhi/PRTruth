@@ -2,7 +2,44 @@ import type { CheckRunSummary, ClaimResult, RequirementResult } from "./types.js
 
 interface RequiredValidationEvidence {
   label: string;
-  checkPattern: RegExp;
+  matchesCheck(name: string): boolean;
+}
+
+const TEST_SCENARIO_STOP_WORDS = new Set([
+  "test", "tests", "regression", "unit", "integration", "e2e", "end", "the", "and", "that", "this",
+  "with", "whose", "only", "inside", "still", "when", "must", "should"
+]);
+
+function regexEvidence(label: string, pattern: RegExp): RequiredValidationEvidence {
+  return {
+    label,
+    matchesCheck: (name: string) => pattern.test(name)
+  };
+}
+
+function explicitTestScenarioEvidence(text: string): RequiredValidationEvidence | null {
+  const match = text.match(
+    /\b(?:regression|unit|integration|e2e|end[- ]to[- ]end)\s+tests?\s*(?:—|–|-|:)\s*([^\n]{3,220})/i
+  );
+  const scenario = match?.[1];
+  if (!scenario) return null;
+
+  const tokens = [...new Set(
+    scenario
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .split(/\s+/)
+      .filter((token) => token.length >= 4 && !TEST_SCENARIO_STOP_WORDS.has(token))
+  )].slice(0, 6);
+
+  return {
+    label: "explicit test scenario",
+    matchesCheck: (name: string) => {
+      if (tokens.length < 2) return false;
+      const normalizedName = name.toLowerCase().replace(/[^a-z0-9]+/g, " ");
+      return tokens.filter((token) => new RegExp(`\\b${token}\\b`, "i").test(normalizedName)).length >= 2;
+    }
+  };
 }
 
 function requiredCompoundValidationEvidence(text: string): RequiredValidationEvidence[] {
@@ -12,18 +49,15 @@ function requiredCompoundValidationEvidence(text: string): RequiredValidationEvi
   // resilience lane must not silently prove an explicitly named stress/fault
   // scenario that GitHub never executed on the exact PR head.
   if (/\bfault[- ]injection\b/i.test(text)) {
-    requirements.push({
-      label: "fault-injection testing",
-      checkPattern: /\bfault[- ]injection\b/i
-    });
+    requirements.push(regexEvidence("fault-injection testing", /\bfault[- ]injection\b/i));
   }
 
   if (/\bconcurrenc(?:y|ies)\b/i.test(text)) {
-    requirements.push({
-      label: "concurrency testing",
-      checkPattern: /\bconcurrenc(?:y|ies)\b/i
-    });
+    requirements.push(regexEvidence("concurrency testing", /\bconcurrenc(?:y|ies)\b/i));
   }
+
+  const explicitScenario = explicitTestScenarioEvidence(text);
+  if (explicitScenario) requirements.push(explicitScenario);
 
   return requirements;
 }
@@ -33,7 +67,7 @@ function hasSuccessfulDirectEvidence(
   checks: CheckRunSummary[]
 ): boolean {
   return checks.some((check) =>
-    requirement.checkPattern.test(check.name)
+    requirement.matchesCheck(check.name)
     && check.status === "completed"
     && check.conclusion === "success"
   );
