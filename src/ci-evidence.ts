@@ -7,18 +7,19 @@ import type { CheckRunSummary, RequiredStatusCheck } from "./types.js";
 export type { CiEvidenceAssessment } from "./ci-evidence-core.js";
 
 const EXPLICIT_GENERIC_CI_SUBJECT = /\b(?:ci|continuous integration|workflow|checks)\b/i;
-const STANDALONE_CHECK = /\bcheck\b/i;
-const TOOL_CHECK = /\b(?:ty\s+check|cargo\s+check|git\s+diff\s+--check|check[- ]jsonschema|trunk\s+check)\b/i;
+const INSTRUCTIONAL_CHECK = /\bcheck\s+(?:the|a|an)\b/i;
 
 export function isGenericCiSuccessStatement(text: string): boolean {
   if (!isGenericCiSuccessStatementCore(text)) return false;
 
-  // A singular ordinary-language instruction such as "check the Network tab"
-  // is not a whole-PR CI assertion. Keep explicit CI/workflow/plural-check claims
-  // and named validation tools intact while rejecting that ambiguous singular
-  // "check" path before unrelated CI can decide a domain requirement.
-  if (!STANDALONE_CHECK.test(text)) return true;
-  return EXPLICIT_GENERIC_CI_SUBJECT.test(text) || TOOL_CHECK.test(text);
+  // An ordinary-language instruction such as "check the Network tab" is not
+  // a whole-PR CI assertion. Only suppress this narrow imperative form; named
+  // tool syntax such as `prettier --check`, `cargo check`, ESLint/Oxlint/Pyrefly
+  // evidence, and explicit CI/workflow/plural-check claims keep existing behavior.
+  if (INSTRUCTIONAL_CHECK.test(text) && !EXPLICIT_GENERIC_CI_SUBJECT.test(text)) {
+    return false;
+  }
+  return true;
 }
 
 export function assessGenericCiSuccess(
