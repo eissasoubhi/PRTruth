@@ -83,28 +83,28 @@ jobs:
             /loads \/alerts with no console errors/i.test(result.requirement.text)
           );
           if (!load) throw new Error('Expected browser-load criterion.');
-          if (load.status === 'PROVEN') {
-            throw new Error('A written manual QA plan must not PROVE that /alerts loaded without console errors.');
+          if (load.status !== 'UNPROVEN') {
+            throw new Error(`Expected unobserved browser load to remain UNPROVEN, received ${load.status}.`);
           }
 
           const interactions = report.results.find((result) =>
-            /Mark-read.*dismiss.*snooze.*end-to-end/i.test(result.requirement.text)
+            /feature described above works as intended/i.test(result.requirement.text)
           );
-          if (!interactions) throw new Error('Expected alert-history interaction criterion.');
-          if (interactions.status === 'PROVEN') {
-            throw new Error('Documented manual test steps must not PROVE the required live interactions executed.');
+          if (!interactions) throw new Error('Expected feature-interaction criterion.');
+          if (interactions.status !== 'UNPROVEN') {
+            throw new Error(`Expected unobserved feature interactions to remain UNPROVEN, received ${interactions.status}.`);
           }
 
           const realBackend = report.results.find((result) =>
             /API calls succeed against a real backend/i.test(result.requirement.text)
           );
           if (!realBackend) throw new Error('Expected real-backend API criterion.');
-          if (realBackend.status === 'PROVEN') {
-            throw new Error('A QA plan and unrelated CI must not PROVE successful calls against a real backend.');
+          if (realBackend.status !== 'UNPROVEN') {
+            throw new Error(`Unrelated CI must not decide real-backend execution; expected UNPROVEN, received ${realBackend.status}.`);
           }
 
-          if (report.verdict === 'PROVEN') {
-            throw new Error('Overall verdict must not be PROVEN while manual browser/live-backend execution is unobserved.');
+          if (report.verdict !== 'UNPROVEN') {
+            throw new Error(`Expected overall UNPROVEN while manual execution is unobserved, received ${report.verdict}.`);
           }
 
           console.log(JSON.stringify({
