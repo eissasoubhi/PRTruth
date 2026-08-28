@@ -1,0 +1,130 @@
+name: Manual oracle batch 76
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-76.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  physical-visual-boundary:
+    name: Physical visual evidence oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real physical-visual oracle
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo luceat-lux-vestra/crossinput \
+            --issue 70 \
+            --pr 72 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/crossinput-72.json
+
+      - name: Compare with independent physical visual oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/crossinput-72.json', 'utf8')
+          ).report;
+
+          // Independent inspection of luceat-lux-vestra/crossinput issue #70 and PR #72:
+          // - the issue defines six acceptance criteria, including visible marker behavior and
+          //   explicit physical visual evidence on an SM-G977N + DeX device;
+          // - exact PR head 313319b8a771a6390fec9c5908486e181221e7d3 exposes four successful
+          //   GitHub Actions checks: macOS App Build + Test, Android Helper Build + Test,
+          //   Documentation Validation, and Shell Script Syntax;
+          // - PR prose explicitly labels physical verification MANUAL_REQUIRED and says the
+          //   bounded synthetic smoke is supplemental only and does not satisfy physical Level-1;
+          // - a human-operated pointer check for every configured edge/display and cleanup path
+          //   was still required, so generic green CI and synthetic state/geometry tests cannot
+          //   prove the physical visual acceptance criteria.
+
+          if (report.results.length !== 6) {
+            throw new Error(`Expected exactly 6 authoritative acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const visiblyPresent = report.results.find((result) =>
+            /marker is visibly present.*configured.*entry edge.*remote ownership/i.test(result.requirement.text)
+          );
+          if (!visiblyPresent) {
+            throw new Error('Expected visible physical marker criterion.');
+          }
+          if (visiblyPresent.status === 'PROVEN') {
+            throw new Error('Synthetic tests and generic green CI must not PROVE physical marker visibility.');
+          }
+
+          const physicalDeviceEvidence = report.results.find((result) =>
+            /physical visual evidence.*SM-G977N.*DeX/i.test(result.requirement.text)
+          );
+          if (!physicalDeviceEvidence) {
+            throw new Error('Expected explicit physical device evidence criterion.');
+          }
+          if (physicalDeviceEvidence.status === 'PROVEN') {
+            throw new Error('PR prose and synthetic smoke must not PROVE explicitly required physical device evidence.');
+          }
+
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Overall verdict must not be PROVEN while required physical visual evidence remains unobserved.');
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            })),
+            checks: report.checks.map((check) => ({
+              name: check.name,
+              scope: check.scope,
+              status: check.status,
+              conclusion: check.conclusion
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-76
+          path: dogfood-results/crossinput-72.json
+          if-no-files-found: error
