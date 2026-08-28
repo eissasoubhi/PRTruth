@@ -1,0 +1,142 @@
+name: Manual oracle batch 74
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-74.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  upstream-history-boundary:
+    name: Upstream history and fresh-clone oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real upstream-history oracle
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo esko/freetoken-pascal \
+            --issue 5 \
+            --pr 30 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/freetoken-pascal-30.json
+
+      - name: Compare with independent upstream-history oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/freetoken-pascal-30.json', 'utf8')
+          ).report;
+
+          // Independent inspection of esko/freetoken-pascal issue #5 and merged PR #30:
+          // - the issue has seven explicit acceptance criteria around an unrelated-history import,
+          //   merge-graph reachability, an exact pinned upstream SHA, a fresh buildable checkout,
+          //   documented sync commands, hosted gates, and scope containment;
+          // - PR #30 exact head e089b00fc6bfcea9e5dc87d3bb2905020320de23 is itself the
+          //   unrelated-history integration merge and its prose reports local merge-base/ancestor checks;
+          // - the exact PR head exposes one successful GitHub Actions job, `repository-gates`, with
+          //   successful steps for pre-commit, docs/manifests, compile, lint, and CPU-safe tests;
+          // - those current-head checks are useful evidence, but they do not directly expose the
+          //   historical merge-base/ancestor commands reported only in PR prose, nor do they prove
+          //   the stronger global statement that both complete histories remain reachable;
+          // - checkout + compile/docs validation also must not silently become proof that a fresh
+          //   checkout is a *complete* imported FreeToken tree unless directly matching evidence says so.
+
+          if (report.results.length !== 7) {
+            throw new Error(`Expected exactly 7 authoritative acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const mergeBase = report.results.find((result) =>
+            /git merge-base main|pinned-upstream-commit/i.test(result.requirement.text)
+          );
+          if (!mergeBase) {
+            throw new Error('Expected the merge-base acceptance criterion.');
+          }
+          if (mergeBase.status === 'PROVEN') {
+            throw new Error('Generic repository gates and PR-reported commands must not PROVE the historical merge-base criterion without directly matching observable execution.');
+          }
+
+          const historyReachability = report.results.find((result) =>
+            /source history.*bootstrap history.*remain reachable|histories remain reachable/i.test(result.requirement.text)
+          );
+          if (!historyReachability) {
+            throw new Error('Expected the source/bootstrap history reachability acceptance criterion.');
+          }
+          if (historyReachability.status === 'PROVEN') {
+            throw new Error('Current-head green CI must not by itself PROVE the global historical reachability of both imported and bootstrap histories.');
+          }
+
+          const freshCheckout = report.results.find((result) =>
+            /clean checkout.*complete buildable FreeToken source tree|complete buildable FreeToken source tree/i.test(result.requirement.text)
+          );
+          if (!freshCheckout) {
+            throw new Error('Expected the clean-checkout completeness acceptance criterion.');
+          }
+          if (freshCheckout.status === 'PROVEN') {
+            throw new Error('Checkout plus broad compile/docs steps must not by themselves PROVE the stronger complete fresh-checkout import criterion.');
+          }
+
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Overall verdict must not be PROVEN while historical merge-graph/fresh-checkout completeness evidence remains unobserved.');
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            })),
+            checks: report.checks.map((check) => ({
+              name: check.name,
+              scope: check.scope,
+              status: check.status,
+              conclusion: check.conclusion
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-74
+          path: dogfood-results/freetoken-pascal-30.json
+          if-no-files-found: error
