@@ -27,9 +27,9 @@ jobs:
       - name: Run local PRTruth composite Action
         uses: ./
         with:
-          repo: cfg-is/cfgms
-          issue: 3707
-          pr: 3709
+          repo: Ndifreke000/stellar-insights
+          issue: 1820
+          pr: 2216
           policy: report-only
           github_summary: "false"
           token: ""
@@ -40,70 +40,74 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - name: Run PRTruth v0.1.24 composite Action
-        uses: eissasoubhi/PRTruth@v0.1.24
+      - name: Run PRTruth v0.1.25 composite Action
+        uses: eissasoubhi/PRTruth@v0.1.25
         with:
-          repo: cfg-is/cfgms
-          issue: 3707
-          pr: 3709
+          repo: Ndifreke000/stellar-insights
+          issue: 1820
+          pr: 2216
           policy: report-only
           github_summary: "false"
           token: ""
 
-  public-npm-batch-75:
-    name: replay Batch 75 with exact public npm package
+  public-npm-batch-77:
+    name: replay Batch 77 with exact public npm package
     runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:
-      - name: Run exact public npm package against Batch 75 oracle
+      - name: Run exact public npm package against Batch 77 oracle
         shell: bash
         run: |
           mkdir -p dogfood-results
-          env -u GITHUB_TOKEN npx -y prtruth@0.1.24 verify \
-            --repo cfg-is/cfgms \
-            --issue 3707 \
-            --pr 3709 \
+          env -u GITHUB_TOKEN npx -y prtruth@0.1.25 verify \
+            --repo Ndifreke000/stellar-insights \
+            --issue 1820 \
+            --pr 2216 \
             --policy report-only \
             --format json \
-            --output dogfood-results/cfgms-3709.json
+            --output dogfood-results/stellar-insights-2216.json
 
-      - name: Compare public package result with independent Batch 75 oracle
+      - name: Compare public package result with independent Batch 77 oracle
         shell: bash
         run: |
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
 
           const report = JSON.parse(
-            readFileSync('dogfood-results/cfgms-3709.json', 'utf8')
+            readFileSync('dogfood-results/stellar-insights-2216.json', 'utf8')
           ).report;
 
-          if (report.results.length !== 5) {
-            throw new Error(`Expected exactly 5 authoritative acceptance criteria, received ${report.results.length}.`);
+          if (report.results.length !== 4) {
+            throw new Error(`Expected exactly 4 authoritative acceptance criteria, received ${report.results.length}.`);
           }
 
-          const deterministicReproduction = report.results.find((result) =>
-            /deterministic reproduction before any fix|fails on unmodified.*develop.*passes after/i.test(result.requirement.text)
+          const load = report.results.find((result) =>
+            /loads (?:the route|\/alerts) with no console errors/i.test(result.requirement.text)
           );
-          if (!deterministicReproduction) {
-            throw new Error('Expected AC1 deterministic pre-fix reproduction criterion.');
-          }
-          if (deterministicReproduction.status === 'PROVEN') {
-            throw new Error('Public 0.1.24 must not PROVE the historical pre-fix fail -> post-fix pass criterion from current-head evidence.');
+          if (!load) throw new Error('Expected browser-load criterion.');
+          if (load.status !== 'UNPROVEN') {
+            throw new Error(`Expected unobserved browser load to remain UNPROVEN, received ${load.status}.`);
           }
 
-          const revertedGuard = report.results.find((result) =>
-            /regression guard covers the real mechanism|fails if AC3.*fix is reverted.*passes with it/i.test(result.requirement.text)
+          const interactions = report.results.find((result) =>
+            /feature described above works as intended/i.test(result.requirement.text)
           );
-          if (!revertedGuard) {
-            throw new Error('Expected AC4 reverted-fix regression-guard criterion.');
-          }
-          if (revertedGuard.status === 'PROVEN') {
-            throw new Error('Public 0.1.24 must not PROVE the reverted-fix historical counterfactual from generic current-head tests.');
+          if (!interactions) throw new Error('Expected feature-interaction criterion.');
+          if (interactions.status !== 'UNPROVEN') {
+            throw new Error(`Expected unobserved feature interactions to remain UNPROVEN, received ${interactions.status}.`);
           }
 
-          if (report.verdict === 'PROVEN') {
-            throw new Error('Public 0.1.24 overall verdict must not be PROVEN while required historical counterfactual evidence remains unobserved.');
+          const realBackend = report.results.find((result) =>
+            /API calls .*succeed against a real backend/i.test(result.requirement.text)
+          );
+          if (!realBackend) throw new Error('Expected real-backend API criterion.');
+          if (realBackend.status !== 'UNPROVEN') {
+            throw new Error(`Unrelated CI must not decide real-backend execution; expected UNPROVEN, received ${realBackend.status}.`);
+          }
+
+          if (report.verdict !== 'NOT_PROVEN') {
+            throw new Error(`Expected overall NOT_PROVEN while manual execution is unobserved, received ${report.verdict}.`);
           }
 
           console.log(JSON.stringify({
