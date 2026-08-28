@@ -1,0 +1,149 @@
+name: Manual oracle batch 78
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-78.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  operational-side-effect-boundary:
+    name: Code changes are not operational execution evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real workflow-side-effect oracle
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo MSXOrg/Distributor \
+            --issue 8 \
+            --pr 9 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/distributor-9.json
+
+      - name: Compare with independent operational oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/distributor-9.json', 'utf8')
+          ).report;
+
+          // Independent inspection of MSXOrg/Distributor issue #8 and PR #9:
+          // - the PR diff directly changes the script to capture/pass an IAT context, read custom
+          //   properties through Name/Value entries, and configure git authentication with
+          //   Set-GitHubGitConfig;
+          // - the PR head c2fc03e1e4e86364797072a992297d072612645e has no GitHub Actions runs;
+          // - therefore the implementation-shaped criteria have direct diff evidence, while the
+          //   operational criteria "workflow step completes" and "pull requests are created or
+          //   updated" have no exact-head execution/side-effect evidence;
+          // - the PR body's statement that the workflow now completes is a claim, not execution
+          //   evidence, and must not promote those operational criteria to PROVEN.
+
+          if (report.results.length !== 5) {
+            throw new Error(`Expected exactly 5 authoritative acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const workflowCompletes = report.results.find((result) =>
+            /workflow step completes without errors/i.test(result.requirement.text)
+          );
+          if (!workflowCompletes) throw new Error('Expected workflow-completion criterion.');
+          if (workflowCompletes.status !== 'UNPROVEN') {
+            throw new Error(`Expected unexecuted workflow completion to remain UNPROVEN, received ${workflowCompletes.status}.`);
+          }
+
+          const iat = report.results.find((result) =>
+            /correct IAT context is passed/i.test(result.requirement.text)
+          );
+          if (!iat) throw new Error('Expected IAT-context criterion.');
+          if (iat.status === 'FAILED') {
+            throw new Error(`Diff directly implements IAT context passing; it must not be FAILED. Received ${iat.status}.`);
+          }
+
+          const customProps = report.results.find((result) =>
+            /Custom properties are read using the `Name`\/`Value` pattern/i.test(result.requirement.text)
+          );
+          if (!customProps) throw new Error('Expected custom-properties criterion.');
+          if (customProps.status === 'FAILED') {
+            throw new Error(`Diff directly implements Name/Value custom-property reads; it must not be FAILED. Received ${customProps.status}.`);
+          }
+
+          const gitAuth = report.results.find((result) =>
+            /Git operations authenticate using the Installation Access Token/i.test(result.requirement.text)
+          );
+          if (!gitAuth) throw new Error('Expected git-authentication criterion.');
+          if (gitAuth.status === 'FAILED') {
+            throw new Error(`Diff directly adds Set-GitHubGitConfig with the IAT context; it must not be FAILED. Received ${gitAuth.status}.`);
+          }
+
+          const prSideEffect = report.results.find((result) =>
+            /Pull requests are created or updated in subscribing repositories/i.test(result.requirement.text)
+          );
+          if (!prSideEffect) throw new Error('Expected pull-request side-effect criterion.');
+          if (prSideEffect.status !== 'UNPROVEN') {
+            throw new Error(`Expected unobserved downstream PR creation/update to remain UNPROVEN, received ${prSideEffect.status}.`);
+          }
+
+          if (report.verdict !== 'NOT_PROVEN') {
+            throw new Error(`Expected overall NOT_PROVEN while operational execution remains unobserved, received ${report.verdict}.`);
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            })),
+            checks: report.checks.map((check) => ({
+              name: check.name,
+              scope: check.scope,
+              status: check.status,
+              conclusion: check.conclusion
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-78
+          path: dogfood-results/distributor-9.json
+          if-no-files-found: error
