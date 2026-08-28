@@ -13,9 +13,9 @@ permissions:
   contents: read
 
 jobs:
-  smoke:
-    name: run local Action against ai-saas-factory
-    runs-on: ubuntu-latest
+  local-action-smoke:
+    name: run local Action against public oracle
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:
@@ -24,12 +24,94 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Run PRTruth composite Action
+      - name: Run local PRTruth composite Action
         uses: ./
         with:
-          repo: eissasoubhi/ai-saas-factory
-          issue: 1
-          pr: 3
+          repo: cfg-is/cfgms
+          issue: 3707
+          pr: 3709
           policy: report-only
           github_summary: "false"
           token: ""
+
+  public-action-smoke:
+    name: run exact public Action tag
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Run PRTruth v0.1.24 composite Action
+        uses: eissasoubhi/PRTruth@v0.1.24
+        with:
+          repo: cfg-is/cfgms
+          issue: 3707
+          pr: 3709
+          policy: report-only
+          github_summary: "false"
+          token: ""
+
+  public-npm-batch-75:
+    name: replay Batch 75 with exact public npm package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Run exact public npm package against Batch 75 oracle
+        shell: bash
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN npx -y prtruth@0.1.24 verify \
+            --repo cfg-is/cfgms \
+            --issue 3707 \
+            --pr 3709 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/cfgms-3709.json
+
+      - name: Compare public package result with independent Batch 75 oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/cfgms-3709.json', 'utf8')
+          ).report;
+
+          if (report.results.length !== 5) {
+            throw new Error(`Expected exactly 5 authoritative acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const deterministicReproduction = report.results.find((result) =>
+            /deterministic reproduction before any fix|fails on unmodified.*develop.*passes after/i.test(result.requirement.text)
+          );
+          if (!deterministicReproduction) {
+            throw new Error('Expected AC1 deterministic pre-fix reproduction criterion.');
+          }
+          if (deterministicReproduction.status === 'PROVEN') {
+            throw new Error('Public 0.1.24 must not PROVE the historical pre-fix fail -> post-fix pass criterion from current-head evidence.');
+          }
+
+          const revertedGuard = report.results.find((result) =>
+            /regression guard covers the real mechanism|fails if AC3.*fix is reverted.*passes with it/i.test(result.requirement.text)
+          );
+          if (!revertedGuard) {
+            throw new Error('Expected AC4 reverted-fix regression-guard criterion.');
+          }
+          if (revertedGuard.status === 'PROVEN') {
+            throw new Error('Public 0.1.24 must not PROVE the reverted-fix historical counterfactual from generic current-head tests.');
+          }
+
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Public 0.1.24 overall verdict must not be PROVEN while required historical counterfactual evidence remains unobserved.');
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            }))
+          }, null, 2));
+          NODE
