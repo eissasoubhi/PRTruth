@@ -1,0 +1,132 @@
+name: Manual oracle batch 77
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-77.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  manual-plan-execution-boundary:
+    name: Manual QA plan is not execution evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real manual-QA-plan oracle
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo Ndifreke000/stellar-insights \
+            --issue 1820 \
+            --pr 2216 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/stellar-insights-2216.json
+
+      - name: Compare with independent manual-QA execution oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/stellar-insights-2216.json', 'utf8')
+          ).report;
+
+          // Independent inspection of Ndifreke000/stellar-insights issue #1820 and PR #2216:
+          // - the issue requires end-to-end browser/manual verification of /alerts against a real
+          //   backend, including create/edit/read/dismiss/snooze interactions and successful API calls;
+          // - PR #2216 only adds manual-QA plan Markdown. Its own Result sections remain placeholders
+          //   asking a future tester to fill in pass/fail, date, browser, and follow-up links;
+          // - therefore the PR documents how to perform the verification but does not itself contain
+          //   observable proof that the required browser interactions or live-backend requests ran;
+          // - exact-head CI includes unrelated success/failure/neutral checks, none of which is direct
+          //   execution evidence for the named /alerts manual QA criteria.
+
+          if (report.results.length !== 4) {
+            throw new Error(`Expected exactly 4 authoritative acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const load = report.results.find((result) =>
+            /loads \/alerts with no console errors/i.test(result.requirement.text)
+          );
+          if (!load) throw new Error('Expected browser-load criterion.');
+          if (load.status === 'PROVEN') {
+            throw new Error('A written manual QA plan must not PROVE that /alerts loaded without console errors.');
+          }
+
+          const interactions = report.results.find((result) =>
+            /Mark-read.*dismiss.*snooze.*end-to-end/i.test(result.requirement.text)
+          );
+          if (!interactions) throw new Error('Expected alert-history interaction criterion.');
+          if (interactions.status === 'PROVEN') {
+            throw new Error('Documented manual test steps must not PROVE the required live interactions executed.');
+          }
+
+          const realBackend = report.results.find((result) =>
+            /API calls succeed against a real backend/i.test(result.requirement.text)
+          );
+          if (!realBackend) throw new Error('Expected real-backend API criterion.');
+          if (realBackend.status === 'PROVEN') {
+            throw new Error('A QA plan and unrelated CI must not PROVE successful calls against a real backend.');
+          }
+
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Overall verdict must not be PROVEN while manual browser/live-backend execution is unobserved.');
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            })),
+            checks: report.checks.map((check) => ({
+              name: check.name,
+              scope: check.scope,
+              status: check.status,
+              conclusion: check.conclusion
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-77
+          path: dogfood-results/stellar-insights-2216.json
+          if-no-files-found: error
