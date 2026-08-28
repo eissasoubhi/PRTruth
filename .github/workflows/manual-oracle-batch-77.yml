@@ -80,7 +80,7 @@ jobs:
           }
 
           const load = report.results.find((result) =>
-            /loads \/alerts with no console errors/i.test(result.requirement.text)
+            /loads (?:the route|\/alerts) with no console errors/i.test(result.requirement.text)
           );
           if (!load) throw new Error('Expected browser-load criterion.');
           if (load.status !== 'UNPROVEN') {
@@ -96,15 +96,16 @@ jobs:
           }
 
           const realBackend = report.results.find((result) =>
-            /API calls succeed against a real backend/i.test(result.requirement.text)
+            /API calls .*succeed against a real backend/i.test(result.requirement.text)
           );
           if (!realBackend) throw new Error('Expected real-backend API criterion.');
           if (realBackend.status !== 'UNPROVEN') {
             throw new Error(`Unrelated CI must not decide real-backend execution; expected UNPROVEN, received ${realBackend.status}.`);
           }
 
-          if (report.verdict !== 'UNPROVEN') {
-            throw new Error(`Expected overall UNPROVEN while manual execution is unobserved, received ${report.verdict}.`);
+          // Requirement-level evidence uses UNPROVEN; the stable report-level verdict schema uses NOT_PROVEN.
+          if (report.verdict !== 'NOT_PROVEN') {
+            throw new Error(`Expected overall NOT_PROVEN while manual execution is unobserved, received ${report.verdict}.`);
           }
 
           console.log(JSON.stringify({
