@@ -166,7 +166,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: eissasoubhi/PRTruth@v0.1.24
+      - uses: eissasoubhi/PRTruth@v0.1.25
         with:
           pr: ${{ github.event.pull_request.number }}
           policy: report-only
