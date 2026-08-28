@@ -1,0 +1,159 @@
+name: Manual oracle batch 79
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-79.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  policy-vs-advisory-boundary:
+    name: Advisory implementation is not enforcement evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real independent-approval oracle
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo NVIDIA/NemoClaw \
+            --issue 6222 \
+            --pr 6233 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/nemoclaw-6233.json
+
+      - name: Compare with independent policy oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/nemoclaw-6233.json', 'utf8')
+          ).report;
+
+          // Independent inspection of NVIDIA/NemoClaw issue #6222 and merged PR #6233:
+          // - the issue requires an enforceable independent-human-approval policy, including a
+          //   required trusted check/ruleset behavior, contributor disqualification, no routine
+          //   bypass, and fail/pending transitions when qualifying approval disappears or a new
+          //   reviewable push lands;
+          // - PR #6233 explicitly narrows its implementation to a best-effort non-blocking
+          //   advisory and says it does not invalidate approvals, publish a failing check, change
+          //   merge readiness, add a required check, or modify branch protection;
+          // - exact-head CI is broad and green, including cli-tests/checks, but that does not turn
+          //   a deliberately non-enforcing advisory into proof of the stronger server-side policy;
+          // - issue closure and merge status are lifecycle facts, not evidence that the unmet hard
+          //   enforcement acceptance criteria were delivered.
+
+          if (report.results.length !== 12) {
+            throw new Error(`Expected exactly 12 authoritative acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const opener = report.results.find((result) =>
+            /PR opener cannot supply the qualifying approval/i.test(result.requirement.text)
+          );
+          if (!opener) throw new Error('Expected PR-opener approval criterion.');
+          if (opener.status === 'PROVEN') {
+            throw new Error('A non-blocking advisory must not PROVE that the PR opener is enforcement-ineligible.');
+          }
+
+          const contributor = report.results.find((result) =>
+            /authored, co-authored, committed, or pushed PR changes cannot supply the qualifying approval/i.test(result.requirement.text)
+          );
+          if (!contributor) throw new Error('Expected contributor disqualification criterion.');
+          if (contributor.status === 'PROVEN') {
+            throw new Error('Contributor-overlap detection without an enforced gate must not be PROVEN as contributor disqualification.');
+          }
+
+          const newPush = report.results.find((result) =>
+            /new reviewable push makes only the independent-approval gate pending/i.test(result.requirement.text)
+          );
+          if (!newPush) throw new Error('Expected new-push pending criterion.');
+          if (newPush.status === 'PROVEN') {
+            throw new Error('Green current-head CI must not PROVE a required pending transition after a future/new reviewable push.');
+          }
+
+          const dismissal = report.results.find((result) =>
+            /Dismissing the qualifying approval immediately makes the check fail/i.test(result.requirement.text)
+          );
+          if (!dismissal) throw new Error('Expected approval-dismissal criterion.');
+          if (dismissal.status === 'PROVEN') {
+            throw new Error('An advisory that leaves allPass unchanged must not PROVE failing-check behavior on approval dismissal.');
+          }
+
+          const requiredCheck = report.results.find((result) =>
+            /independent-approval check is required for `main`/i.test(result.requirement.text)
+          );
+          if (!requiredCheck) throw new Error('Expected required-check/ruleset criterion.');
+          if (requiredCheck.status === 'PROVEN') {
+            throw new Error('PR #6233 explicitly excludes required-check and branch-protection changes; this criterion must not be PROVEN.');
+          }
+
+          const maintainer = report.results.find((result) =>
+            /Maintainer skills refuse to approve or merge when the current actor is in the PR contributor set/i.test(result.requirement.text)
+          );
+          if (!maintainer) throw new Error('Expected maintainer-skill refusal criterion.');
+          if (maintainer.status === 'PROVEN') {
+            throw new Error('A warning-only advisory must not PROVE refusal to approve or merge.');
+          }
+
+          if (report.verdict !== 'NOT_PROVEN') {
+            throw new Error(`Expected overall NOT_PROVEN for a deliberately narrower advisory implementation, received ${report.verdict}.`);
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            })),
+            checks: report.checks.map((check) => ({
+              name: check.name,
+              scope: check.scope,
+              status: check.status,
+              conclusion: check.conclusion
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-79
+          path: dogfood-results/nemoclaw-6233.json
+          if-no-files-found: error
