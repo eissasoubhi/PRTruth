@@ -1,0 +1,91 @@
+name: Public release validation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/public-release-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  action-smoke:
+    name: exact public Action tag smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Run exact public PRTruth Action tag
+        uses: eissasoubhi/PRTruth@v0.1.24
+        with:
+          repo: cfg-is/cfgms
+          issue: 3707
+          pr: 3709
+          policy: report-only
+          github_summary: "false"
+          token: ""
+
+  npm-batch-75-replay:
+    name: exact public npm Batch 75 replay
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Run exact public npm package against Batch 75 oracle
+        shell: bash
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN npx -y prtruth@0.1.24 verify \
+            --repo cfg-is/cfgms \
+            --issue 3707 \
+            --pr 3709 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/cfgms-3709.json
+
+      - name: Compare public package result with independent Batch 75 oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/cfgms-3709.json', 'utf8')
+          ).report;
+
+          if (report.results.length !== 5) {
+            throw new Error(`Expected exactly 5 authoritative acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const deterministicReproduction = report.results.find((result) =>
+            /deterministic reproduction before any fix|fails on unmodified.*develop.*passes after/i.test(result.requirement.text)
+          );
+          if (!deterministicReproduction) {
+            throw new Error('Expected AC1 deterministic pre-fix reproduction criterion.');
+          }
+          if (deterministicReproduction.status === 'PROVEN') {
+            throw new Error('Public 0.1.24 must not PROVE the historical pre-fix fail -> post-fix pass criterion from current-head evidence.');
+          }
+
+          const revertedGuard = report.results.find((result) =>
+            /regression guard covers the real mechanism|fails if AC3.*fix is reverted.*passes with it/i.test(result.requirement.text)
+          );
+          if (!revertedGuard) {
+            throw new Error('Expected AC4 reverted-fix regression-guard criterion.');
+          }
+          if (revertedGuard.status === 'PROVEN') {
+            throw new Error('Public 0.1.24 must not PROVE the reverted-fix historical counterfactual from generic current-head tests.');
+          }
+
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Public 0.1.24 overall verdict must not be PROVEN while required historical counterfactual evidence remains unobserved.');
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            }))
+          }, null, 2));
+          NODE
