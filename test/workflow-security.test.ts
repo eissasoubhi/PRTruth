@@ -5,14 +5,36 @@ function workflow(path: string): string {
   return readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 }
 
+function expectPinnedAction(content: string, action: string, version: string): void {
+  const escapedAction = action.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  expect(content).toMatch(
+    new RegExp(`uses: ${escapedAction}@[0-9a-f]{40}\\s+#\\s+${escapedVersion}(?:\\s|$)`)
+  );
+  expect(content).not.toContain(`uses: ${action}@${version}`);
+}
+
 describe("workflow checkout hardening", () => {
-  for (const path of [
+  const immutableWorkflows = [
     ".github/workflows/ci.yml",
-    ".github/workflows/action-smoke.yml",
-    ".github/workflows/dogfood.yml",
-    ".github/workflows/github-rules-smoke.yml",
     ".github/workflows/release.yml",
     ".github/workflows/npm-publish.yml"
+  ];
+
+  for (const path of immutableWorkflows) {
+    it(`${path} pins checkout v7 without persisting credentials`, () => {
+      const content = workflow(path);
+
+      expectPinnedAction(content, "actions/checkout", "v7");
+      expect(content).not.toContain("uses: actions/checkout@v6");
+      expect(content).toContain("persist-credentials: false");
+    });
+  }
+
+  for (const path of [
+    ".github/workflows/action-smoke.yml",
+    ".github/workflows/dogfood.yml",
+    ".github/workflows/github-rules-smoke.yml"
   ]) {
     it(`${path} uses checkout v7 without persisting credentials`, () => {
       const content = workflow(path);
@@ -23,12 +45,26 @@ describe("workflow checkout hardening", () => {
     });
   }
 
+  for (const path of immutableWorkflows) {
+    it(`${path} pins setup-node v7 with implicit package-manager caching disabled`, () => {
+      const content = workflow(path);
+
+      expectPinnedAction(content, "actions/setup-node", "v7");
+      expect(content).not.toContain("uses: actions/setup-node@v6");
+      expect(content).toContain("package-manager-cache: false");
+    });
+
+    it(`${path} pins the Node 24-based pnpm action v6`, () => {
+      const content = workflow(path);
+
+      expectPinnedAction(content, "pnpm/action-setup", "v6");
+      expect(content).not.toContain("uses: pnpm/action-setup@v4");
+    });
+  }
+
   for (const path of [
-    ".github/workflows/ci.yml",
     ".github/workflows/dogfood.yml",
-    ".github/workflows/github-rules-smoke.yml",
-    ".github/workflows/release.yml",
-    ".github/workflows/npm-publish.yml"
+    ".github/workflows/github-rules-smoke.yml"
   ]) {
     it(`${path} uses setup-node v7 with implicit package-manager caching disabled`, () => {
       const content = workflow(path);
@@ -50,13 +86,20 @@ describe("workflow checkout hardening", () => {
     ".github/workflows/release.yml",
     ".github/workflows/npm-publish.yml"
   ]) {
-    it(`${path} uses github-script v9`, () => {
+    it(`${path} pins github-script v9`, () => {
       const content = workflow(path);
 
-      expect(content).toContain("uses: actions/github-script@v9");
+      expectPinnedAction(content, "actions/github-script", "v9");
       expect(content).not.toContain("uses: actions/github-script@v7");
     });
   }
+
+  it("pins github-script v9 in main merge provenance", () => {
+    const content = workflow(".github/workflows/main-merge-provenance.yml");
+
+    expectPinnedAction(content, "actions/github-script", "v9");
+    expect(content).not.toContain("uses: actions/github-script@v7");
+  });
 
   it("uses the current upload-artifact generation for dogfood reports", () => {
     const content = workflow(".github/workflows/dogfood.yml");
