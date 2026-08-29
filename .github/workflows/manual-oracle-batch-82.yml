@@ -1,0 +1,130 @@
+name: Manual oracle batch 82
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-82.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  incomplete-cd-boundary:
+    name: A CD-shaped stub is not delivery proof
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real incomplete-CD oracle
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo stellar-vortex-protocol/vortex-backend \
+            --issue 240 \
+            --pr 339 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/vortex-backend-339.json
+
+      - name: Compare with independent incomplete-CD oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/vortex-backend-339.json', 'utf8')
+          ).report;
+
+          // Independent inspection of stellar-vortex-protocol/vortex-backend issue #240 and
+          // merged PR #339:
+          // - the issue requires CD on push to main, Docker image tags containing both the git
+          //   SHA and a semver-ish version, a registry push, and a documented deployment step;
+          // - the PR calls its own change a "minimal Docker CD workflow stub";
+          // - its complete cd.yml addition is only 13 lines: trigger on v* tags, checkout, then
+          //   `docker build -t vortex-backend:${GITHUB_REF_NAME} .`;
+          // - there is no registry login/push, no SHA tag, no deployment step, and no README
+          //   deployment update in the PR diff;
+          // - the PR has no submitted GitHub review approvals.
+          // Therefore repository evidence that merely looks "CD-shaped" must not PROVE the
+          // stronger delivery contract.
+
+          const criteria = report.results.map((result) => result.requirement.text);
+          if (criteria.length === 0) {
+            throw new Error('Expected PRTruth to extract issue #240 acceptance requirements.');
+          }
+
+          const forbiddenProven = report.results.filter((result) => {
+            const text = result.requirement.text;
+            return result.status === 'PROVEN' && (
+              /push to [`']?main|post-merge/i.test(text)
+              || /push(?:es|ed|ing)? .*container registry|GHCR|registry/i.test(text)
+              || /git SHA.*semver|semver.*git SHA/i.test(text)
+              || /deployment step|where the image goes next/i.test(text)
+              || /working end-to-end|workflow itself shown green in a real run/i.test(text)
+              || /reviewed and approved/i.test(text)
+            );
+          });
+
+          if (forbiddenProven.length > 0) {
+            throw new Error(
+              `Incomplete CD stub must not PROVE stronger delivery criteria: ${forbiddenProven.map((r) => r.requirement.text).join(' | ')}`
+            );
+          }
+
+          if (report.verdict === 'PROVEN') {
+            throw new Error('Expected the incomplete CD implementation to remain not fully proven.');
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            })),
+            checks: report.checks.map((check) => ({
+              name: check.name,
+              scope: check.scope,
+              status: check.status,
+              conclusion: check.conclusion
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-82
+          path: dogfood-results/vortex-backend-339.json
+          if-no-files-found: error
