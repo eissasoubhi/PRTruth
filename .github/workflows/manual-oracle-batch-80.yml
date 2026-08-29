@@ -1,0 +1,151 @@
+name: Manual oracle batch 80
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-80.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  external-saas-state-boundary:
+    name: Repository implementation is not external SaaS state
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real external-state oracle
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo NODE-Sudbury/NODE-Sudbury.github.io \
+            --issue 2 \
+            --pr 6 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/node-sudbury-6.json
+
+      - name: Compare with independent external-state oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/node-sudbury-6.json', 'utf8')
+          ).report;
+
+          // Independent inspection of NODE-Sudbury/NODE-Sudbury.github.io issue #2 and merged PR #6:
+          // - the issue requires two real Supabase projects, correctly scoped Vercel environment
+          //   variables, successful /api/health responses on both deployed environments, and secure
+          //   storage of database passwords;
+          // - PR #6 adds @supabase/supabase-js, src/lib/supabase.ts, and src/app/api/health/route.ts,
+          //   and its prose says preview/prod variables point at the corresponding projects;
+          // - those repository changes are implementation/navigation evidence, not deterministic
+          //   evidence that external Supabase projects or Vercel configuration actually exist;
+          // - the exact PR head 4f06f577733889379eb8773e70527256fe49e855 has no GitHub Actions
+          //   workflow runs, so there is no exact-head hosted execution proving either deployed
+          //   /api/health endpoint succeeded;
+          // - password-manager state is external/private and cannot be inferred from code or PR prose.
+
+          if (report.results.length !== 6) {
+            throw new Error(`Expected exactly 6 authoritative acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const prodProject = report.results.find((result) =>
+            /node-sudbury-prod.*Supabase project created/i.test(result.requirement.text)
+          );
+          if (!prodProject) throw new Error('Expected production Supabase-project criterion.');
+          if (prodProject.status === 'PROVEN') {
+            throw new Error('Repository code or PR prose must not PROVE that an external production Supabase project exists.');
+          }
+
+          const devProject = report.results.find((result) =>
+            /node-sudbury-dev.*Supabase project created/i.test(result.requirement.text)
+          );
+          if (!devProject) throw new Error('Expected development Supabase-project criterion.');
+          if (devProject.status === 'PROVEN') {
+            throw new Error('Repository code or PR prose must not PROVE that an external development Supabase project exists.');
+          }
+
+          const vercel = report.results.find((result) =>
+            /Vercel env vars set correctly per environment/i.test(result.requirement.text)
+          );
+          if (!vercel) throw new Error('Expected Vercel environment-variable criterion.');
+          if (vercel.status === 'PROVEN') {
+            throw new Error('PR prose about env vars must not PROVE external Vercel configuration state.');
+          }
+
+          const health = report.results.find((result) =>
+            /\/api\/health.*returns.*ok.*both prod and dev/i.test(result.requirement.text)
+          );
+          if (!health) throw new Error('Expected deployed health-check criterion.');
+          if (health.status === 'PROVEN') {
+            throw new Error('A route implementation without exact deployed execution must not PROVE prod+dev health success.');
+          }
+
+          const passwords = report.results.find((result) =>
+            /Database passwords stored securely/i.test(result.requirement.text)
+          );
+          if (!passwords) throw new Error('Expected secure password-storage criterion.');
+          if (passwords.status === 'PROVEN') {
+            throw new Error('Repository evidence must not PROVE private password-manager state.');
+          }
+
+          if (report.verdict !== 'NOT_PROVEN') {
+            throw new Error(`Expected overall NOT_PROVEN for external SaaS/deployment state without deterministic execution evidence, received ${report.verdict}.`);
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            })),
+            checks: report.checks.map((check) => ({
+              name: check.name,
+              scope: check.scope,
+              status: check.status,
+              conclusion: check.conclusion
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-80
+          path: dogfood-results/node-sudbury-6.json
+          if-no-files-found: error
