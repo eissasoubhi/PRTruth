@@ -1,0 +1,129 @@
+name: Manual oracle batch 84
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-84.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  incomplete-runtime-selector-boundary:
+    name: Green merged runtime scaffold is not proof of omitted selector integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real incomplete-delivery oracle
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo lang-nextjs/lang-nextjs \
+            --issue 7 \
+            --pr 348 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/lang-nextjs-348.json
+
+      - name: Compare with independent incomplete-delivery oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/lang-nextjs-348.json', 'utf8')
+          ).report;
+
+          // Independent inspection of lang-nextjs/lang-nextjs issue #7 and merged PR #348:
+          // - issue #7 explicitly requires the reference app runtime selector to switch to `node`
+          //   and retain identical UI behaviour;
+          // - PR #348 implements and heavily tests the Node backend itself, and its exact head has
+          //   multiple successful GitHub Actions workflows;
+          // - the PR nevertheless states explicitly that "The selector offering `node`" is the
+          //   issue's third acceptance criterion and is deliberately left out of this PR because
+          //   it requires separate NODE_URL/reference-app plumbing;
+          // - the issue was then closed as completed when the PR merged.
+          // Therefore merge, issue closure, broad green CI, backend implementation, and strong
+          // evidence for adjacent criteria must not promote the omitted selector criterion to
+          // PROVEN. The correct boundary for that criterion is UNPROVEN unless direct deterministic
+          // evidence of the selector integration itself exists.
+
+          if (report.results.length === 0) {
+            throw new Error('Expected PRTruth to extract issue #7 acceptance criteria.');
+          }
+
+          const selectorCriteria = report.results.filter((result) =>
+            /runtime selector/i.test(result.requirement.text)
+            && /node/i.test(result.requirement.text)
+          );
+
+          if (selectorCriteria.length === 0) {
+            throw new Error(
+              `Expected the runtime-selector acceptance criterion to be extracted. Extracted: ${report.results.map((r) => r.requirement.text).join(' | ')}`
+            );
+          }
+
+          const incorrectlyProven = selectorCriteria.filter(
+            (result) => result.status === 'PROVEN'
+          );
+
+          if (incorrectlyProven.length > 0) {
+            throw new Error(
+              `Omitted runtime-selector integration must not be PROVEN: ${incorrectlyProven.map((r) => r.requirement.text).join(' | ')}`
+            );
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            selectorCriteria: selectorCriteria.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            })),
+            checks: report.checks.map((check) => ({
+              name: check.name,
+              scope: check.scope,
+              status: check.status,
+              conclusion: check.conclusion
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-84
+          path: dogfood-results/lang-nextjs-348.json
+          if-no-files-found: error
