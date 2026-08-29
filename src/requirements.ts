@@ -6,11 +6,17 @@ import {
 
 const BOLD_LABELED_CRITERION = /^(\s*)\*\*((?:AC|REQ|CRITERION)[-_ ]?\d+(?:\s*\[[^\]]+\])?)\s*[—–]\s*(.+?)\*\*\s*(.*)$/i;
 const PLAIN_LABELED_CRITERION = /^(\s*)((?:AC|REQ|CRITERION)[-_ ]?\d+(?:\s*\[[^\]]+\])?)\s*[—–]\s*(.*)$/i;
+const BARE_EXPECTED_HEADING = /^(\s*#{1,6}\s+)expected(\s*#*\s*)$/i;
 
-function normalizeUnicodeLabeledCriteria(markdown: string): string {
+function normalizeIssueMarkdown(markdown: string): string {
   return markdown
     .split(/\r?\n/)
     .map((line) => {
+      const expected = line.match(BARE_EXPECTED_HEADING);
+      if (expected) {
+        return `${expected[1] ?? ""}Expected behavior${expected[2] ?? ""}`;
+      }
+
       const bold = line.match(BOLD_LABELED_CRITERION);
       if (bold) {
         const trailing = (bold[4] ?? "").trim();
@@ -28,9 +34,9 @@ function normalizeUnicodeLabeledCriteria(markdown: string): string {
 }
 
 export function extractExplicitRequirements(markdown: string): Requirement[] {
-  return extractExplicitRequirementsCore(normalizeUnicodeLabeledCriteria(markdown));
+  return extractExplicitRequirementsCore(normalizeIssueMarkdown(markdown));
 }
 
 export function extractRequirements(markdown: string): Requirement[] {
-  return extractRequirementsCore(normalizeUnicodeLabeledCriteria(markdown));
+  return extractRequirementsCore(normalizeIssueMarkdown(markdown));
 }
