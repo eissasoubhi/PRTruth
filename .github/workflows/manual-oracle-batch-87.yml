@@ -1,0 +1,129 @@
+name: Manual oracle batch 87
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-87.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  preexisting-behavior-attribution-boundary:
+    name: Green regression coverage does not prove target-PR implementation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real preexisting-behavior oracle
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo adamtheturtle/no-defaults \
+            --issue 778 \
+            --pr 1080 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/no-defaults-1080.json
+
+      - name: Compare with independent preexisting-behavior oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/no-defaults-1080.json', 'utf8')
+          ).report;
+
+          // Independent inspection of adamtheturtle/no-defaults issue #778 and merged PR #1080:
+          // - issue #778 says function parameters must shadow Pydantic PrivateAttr helpers so the
+          //   real configured-model field default is reported;
+          // - PR #1080 changes only src/lib.rs test coverage and explicitly states that the
+          //   generalized alias-invalidation implementation already exists in its dependency/base;
+          // - the exact patch adds a regression test but no analyzer/runtime implementation;
+          // - green exact-head CI can prove the regression scenario currently passes, but it cannot
+          //   prove that target PR #1080 delivered the already-existing implementation itself.
+          // Until PRTruth has an explicit PREEXISTING / ALREADY_SATISFIED delivery state, it must
+          // not attribute that implementation claim to the target PR as PROVEN solely from current
+          // green regression coverage, issue closure, or merge state.
+
+          if (report.results.length === 0) {
+            throw new Error('Expected PRTruth to extract issue #778 requirements.');
+          }
+
+          const shadowingCriteria = report.results.filter((result) => {
+            const text = result.requirement.text;
+            return /parameter bindings? must shadow/i.test(text)
+              || /PrivateAttr/i.test(text)
+              || /field default must be reported/i.test(text);
+          });
+
+          if (shadowingCriteria.length === 0) {
+            throw new Error(
+              `Expected PrivateAttr shadowing criterion to be extracted. Extracted: ${report.results.map((r) => r.requirement.text).join(' | ')}`
+            );
+          }
+
+          const incorrectlyProven = shadowingCriteria.filter(
+            (result) => result.status === 'PROVEN'
+          );
+
+          if (incorrectlyProven.length > 0) {
+            throw new Error(
+              `Target PR #1080 only adds regression coverage for behavior already present in its base; implementation attribution must not be PROVEN without a distinct preexisting-state model: ${incorrectlyProven.map((r) => r.requirement.text).join(' | ')}`
+            );
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            shadowingCriteria: shadowingCriteria.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            })),
+            checks: report.checks.map((check) => ({
+              name: check.name,
+              scope: check.scope,
+              status: check.status,
+              conclusion: check.conclusion
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-87
+          path: dogfood-results/no-defaults-1080.json
+          if-no-files-found: error
