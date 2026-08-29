@@ -49,6 +49,7 @@ jobs:
           const workflows = [
             '.github/workflows/release.yml',
             '.github/workflows/npm-publish.yml',
+            '.github/workflows/main-merge-provenance.yml',
           ];
           const violations = [];
 
