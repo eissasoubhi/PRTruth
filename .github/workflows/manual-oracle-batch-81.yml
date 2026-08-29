@@ -1,0 +1,134 @@
+name: Manual oracle batch 81
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-81.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  visual-runtime-boundary:
+    name: Green CI is not cross-platform visual/runtime proof
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real visual/runtime oracle
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo crcrworks/crosspond \
+            --issue 101 \
+            --pr 102 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/crosspond-102.json
+
+      - name: Compare with independent visual/runtime oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/crosspond-102.json', 'utf8')
+          ).report;
+
+          // Independent inspection of crcrworks/crosspond issue #101 and merged PR #102:
+          // - the authoritative acceptance criteria require visible launcher contrast on a dark
+          //   desktop, click-through transparent gutter behavior, unclipped CSS shadow behavior,
+          //   and cross-platform visual consistency;
+          // - PR #102 changes CSS/platform implementation and its exact head
+          //   608729cb56ed84570f99ea607d5e9257d2770f9a has successful hosted CI;
+          // - however, the PR explicitly says its Linux VM cannot confirm launch-and-stay-up on
+          //   a Mac display after the observed macOS abort and asks for real Mac confirmation;
+          // - source changes and green hosted CI are not deterministic proof of human-visible
+          //   desktop appearance, native click-through behavior, shadow clipping, or unexecuted
+          //   cross-platform runtime behavior.
+
+          if (report.results.length !== 4) {
+            throw new Error(`Expected exactly 4 authoritative acceptance criteria, received ${report.results.length}.`);
+          }
+
+          const visible = report.results.find((result) =>
+            /dark editor desktop.*recents chips.*composer outline.*clearly visible/i.test(result.requirement.text)
+          );
+          if (!visible) throw new Error('Expected dark-desktop visual criterion.');
+          if (visible.status === 'PROVEN') {
+            throw new Error('CSS/source changes or green CI must not PROVE human-visible desktop appearance without matching visual/runtime evidence.');
+          }
+
+          const gutter = report.results.find((result) =>
+            /Transparent gutter still click-through.*shadow still not clipped/i.test(result.requirement.text)
+          );
+          if (!gutter) throw new Error('Expected click-through/shadow runtime criterion.');
+          if (gutter.status === 'PROVEN') {
+            throw new Error('Implementation code must not PROVE native click-through and rendered shadow behavior without matching runtime evidence.');
+          }
+
+          const crossPlatform = report.results.find((result) =>
+            /Linux.*Windows.*look like Mac.*same CSS.*no OS blur required/i.test(result.requirement.text)
+          );
+          if (!crossPlatform) throw new Error('Expected cross-platform visual criterion.');
+          if (crossPlatform.status === 'PROVEN') {
+            throw new Error('One exact-head CI history must not PROVE unobserved Linux/Windows/Mac visual parity.');
+          }
+
+          if (report.verdict !== 'NOT_PROVEN') {
+            throw new Error(`Expected overall NOT_PROVEN for visual/runtime criteria without matching execution evidence, received ${report.verdict}.`);
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            })),
+            checks: report.checks.map((check) => ({
+              name: check.name,
+              scope: check.scope,
+              status: check.status,
+              conclusion: check.conclusion
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-81
+          path: dogfood-results/crosspond-102.json
+          if-no-files-found: error
