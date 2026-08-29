@@ -1,0 +1,127 @@
+name: Manual oracle batch 86
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-86.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  post-merge-scheduled-execution-boundary:
+    name: Green PR CI does not prove post-merge scheduled execution
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real post-merge runtime oracle
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo dardenkyle/CS2-analytics \
+            --issue 146 \
+            --pr 151 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/cs2-analytics-151.json
+
+      - name: Compare with independent post-merge runtime oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/cs2-analytics-151.json', 'utf8')
+          ).report;
+
+          // Independent inspection of dardenkyle/CS2-analytics issue #146 and merged PR #151:
+          // - issue #146 requires a scheduled workflow to actually run dbt build daily against the
+          //   deployed database and requires snapshot rows to accumulate across two scheduled runs;
+          // - PR #151 adds the workflow, freshness gate and docs, and its exact PR head has green CI;
+          // - the PR explicitly states that first scheduled/dispatched runner execution and history
+          //   accrual across two scheduled runs are inherently post-merge acceptance criteria;
+          // - merge and issue closure therefore do not themselves prove those runtime outcomes.
+          // PRTruth must keep those execution/history claims below PROVEN unless matching deterministic
+          // post-merge execution evidence is actually observable for the target history.
+
+          if (report.results.length === 0) {
+            throw new Error('Expected PRTruth to extract issue #146 requirements.');
+          }
+
+          const postMergeRuntimeCriteria = report.results.filter((result) => {
+            const text = result.requirement.text;
+            return /scheduled workflow runs dbt build/i.test(text)
+              || /snapshot rows accumulate across runs/i.test(text)
+              || /two scheduled runs/i.test(text);
+          });
+
+          if (postMergeRuntimeCriteria.length === 0) {
+            throw new Error(
+              `Expected post-merge scheduled-execution criteria to be extracted. Extracted: ${report.results.map((r) => r.requirement.text).join(' | ')}`
+            );
+          }
+
+          const incorrectlyProven = postMergeRuntimeCriteria.filter(
+            (result) => result.status === 'PROVEN'
+          );
+
+          if (incorrectlyProven.length > 0) {
+            throw new Error(
+              `Post-merge scheduled execution/history must not be PROVEN by PR-head CI or implementation alone: ${incorrectlyProven.map((r) => r.requirement.text).join(' | ')}`
+            );
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            postMergeRuntimeCriteria: postMergeRuntimeCriteria.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            })),
+            checks: report.checks.map((check) => ({
+              name: check.name,
+              scope: check.scope,
+              status: check.status,
+              conclusion: check.conclusion
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-86
+          path: dogfood-results/cs2-analytics-151.json
+          if-no-files-found: error
