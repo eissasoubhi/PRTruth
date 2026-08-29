@@ -24,21 +24,54 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
         with:
           version: 10
           run_install: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22.12.0
           package-manager-cache: false
+
+      - name: Verify release-chain Actions are immutable
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const workflows = [
+            '.github/workflows/release.yml',
+            '.github/workflows/npm-publish.yml',
+          ];
+          const violations = [];
+
+          for (const workflow of workflows) {
+            const lines = readFileSync(workflow, 'utf8').split(/\r?\n/);
+            for (let index = 0; index < lines.length; index += 1) {
+              const match = lines[index].match(/^\s*uses:\s*([^\s#]+)/);
+              if (!match || match[1].startsWith('./')) continue;
+
+              const at = match[1].lastIndexOf('@');
+              const ref = at >= 0 ? match[1].slice(at + 1) : '';
+              if (!/^[0-9a-f]{40}$/.test(ref)) {
+                violations.push(`${workflow}:${index + 1}: ${match[1]}`);
+              }
+            }
+          }
+
+          if (violations.length > 0) {
+            console.error('Release-chain Actions must be pinned to immutable 40-character commit SHAs:');
+            for (const violation of violations) console.error(`- ${violation}`);
+            process.exit(1);
+          }
+          NODE
 
       - name: Install dependencies
         run: |
