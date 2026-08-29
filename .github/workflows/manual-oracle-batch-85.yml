@@ -1,0 +1,124 @@
+name: Manual oracle batch 85
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-85.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  partial-issue-delivery-boundary:
+    name: Merge + green CI do not prove explicitly omitted issue scope
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real partial-delivery oracle
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo astrapi69/adaptive-learner \
+            --issue 2793 \
+            --pr 2810 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/adaptive-learner-2810.json
+
+      - name: Compare with independent partial-delivery oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/adaptive-learner-2810.json', 'utf8')
+          ).report;
+
+          // Independent inspection of astrapi69/adaptive-learner issue #2793 and merged PR #2810:
+          // - issue #2793 stage 3 asks for set progress in BOTH the content-browser row and set page;
+          // - PR #2810 implements the set page/list/progress surface and has broad successful exact-head CI;
+          // - the PR explicitly says per-set progress inside content-browser rows is "Not in this PR";
+          // - the PR nevertheless closes #2793 and the issue is closed as completed.
+          // Therefore merge, issue closure, adjacent implementation, tests, and green CI must not promote
+          // the full stage-3 requirement to PROVEN while one named delivery surface is explicitly omitted.
+
+          if (report.results.length === 0) {
+            throw new Error('Expected PRTruth to extract issue #2793 requirements.');
+          }
+
+          const progressCriteria = report.results.filter((result) => {
+            const text = result.requirement.text;
+            return /Set-Fortschritt/i.test(text)
+              || (/Content-Browser/i.test(text) && /Set-Seite/i.test(text));
+          });
+
+          if (progressCriteria.length === 0) {
+            throw new Error(
+              `Expected the stage-3 set-progress criterion to be extracted. Extracted: ${report.results.map((r) => r.requirement.text).join(' | ')}`
+            );
+          }
+
+          const incorrectlyProven = progressCriteria.filter(
+            (result) => result.status === 'PROVEN'
+          );
+
+          if (incorrectlyProven.length > 0) {
+            throw new Error(
+              `Explicitly partial stage-3 delivery must not be PROVEN: ${incorrectlyProven.map((r) => r.requirement.text).join(' | ')}`
+            );
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            progressCriteria: progressCriteria.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            })),
+            checks: report.checks.map((check) => ({
+              name: check.name,
+              scope: check.scope,
+              status: check.status,
+              conclusion: check.conclusion
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-85
+          path: dogfood-results/adaptive-learner-2810.json
+          if-no-files-found: error
