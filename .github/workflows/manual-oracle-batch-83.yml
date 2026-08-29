@@ -1,0 +1,123 @@
+name: Manual oracle batch 83
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/manual-oracle-batch-83.yml"
+      - "src/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  ci-optimization-boundary:
+    name: Green matrix is not proof of unexercised optimization claims
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_PRODUCTION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --prod=false --force
+
+      - name: Build PRTruth
+        run: pnpm build
+
+      - name: Run PRTruth against real CI-optimization oracle
+        run: |
+          mkdir -p dogfood-results
+          env -u GITHUB_TOKEN node dist/cli.js verify \
+            --repo Pasta-Devs/Marinara-Engine \
+            --issue 5622 \
+            --pr 5630 \
+            --policy report-only \
+            --format json \
+            --output dogfood-results/marinara-engine-5630.json
+
+      - name: Compare with independent CI-optimization oracle
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const report = JSON.parse(
+            readFileSync('dogfood-results/marinara-engine-5630.json', 'utf8')
+          ).report;
+
+          // Independent inspection of Pasta-Devs/Marinara-Engine issue #5622 and merged PR #5630:
+          // - the issue proposes four optimization items, including "Build once, reuse" and a
+          //   skip gate whose real docs-only behavior is observable only on an actually unrelated PR;
+          // - the PR explicitly states there is no build-artifact hand-off and explains why that
+          //   requested optimization was intentionally not implemented;
+          // - the PR-head browser matrix is green and does exercise the nine shards/fan-ins, but
+          //   the PR itself changes the workflow so its skip gate takes the RUN path, not the
+          //   docs-only SKIP path;
+          // - its own manual-verification checklist leaves the post-merge docs-only skip behavior,
+          //   wall-time comparison, and cache-hit confirmation unchecked.
+          // Therefore green final-head CI must not be promoted into proof of the intentionally
+          // omitted build-once request or of runtime behavior that was not actually exercised.
+
+          if (report.results.length === 0) {
+            throw new Error('Expected PRTruth to extract issue #5622 requirements.');
+          }
+
+          const forbiddenProven = report.results.filter((result) => {
+            const text = result.requirement.text;
+            return result.status === 'PROVEN' && (
+              /build once|single build job|reuse.*artifact|upload.*artifact/i.test(text)
+              || /docs-only|unrelated PR|skip gate/i.test(text)
+              || /wall time|15.?21|~?6 minute/i.test(text)
+              || /cache.*hit|browser cache/i.test(text)
+            );
+          });
+
+          if (forbiddenProven.length > 0) {
+            throw new Error(
+              `Unimplemented or unexercised CI optimization claims must not be PROVEN: ${forbiddenProven.map((r) => r.requirement.text).join(' | ')}`
+            );
+          }
+
+          console.log(JSON.stringify({
+            verdict: report.verdict,
+            criteria: report.results.map((result) => ({
+              text: result.requirement.text,
+              status: result.status,
+              reason: result.reason
+            })),
+            checks: report.checks.map((check) => ({
+              name: check.name,
+              scope: check.scope,
+              status: check.status,
+              conclusion: check.conclusion
+            }))
+          }, null, 2));
+          NODE
+
+      - name: Upload dogfood result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manual-oracle-batch-83
+          path: dogfood-results/marinara-engine-5630.json
+          if-no-files-found: error
